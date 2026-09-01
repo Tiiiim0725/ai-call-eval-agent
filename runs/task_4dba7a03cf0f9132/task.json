@@ -1,0 +1,21 @@
+{
+  "task_id": "task_4dba7a03cf0f9132",
+  "status": "released_prototype",
+  "created_at": "2026-08-18T09:55:46+00:00",
+  "parser_version": "mvp-v1-parser-0.1",
+  "source": {
+    "source_id": "src_5aeac74925c010ba",
+    "sha256": "5aeac74925c010ba716a8a1a6e5c240ad44249ba38f072b874df4b7030d25a40",
+    "byte_length": 1182,
+    "encoding": "utf-8",
+    "original_filename": "case C01.txt"
+  },
+  "target_speaker": "AI猎头",
+  "speakers": [
+    "AI猎头",
+    "候选人"
+  ],
+  "unparsed_line_count": 0,
+  "approved_by": "operator",
+  "approved_at": "2026-08-18T09:55:54+00:00"
+}

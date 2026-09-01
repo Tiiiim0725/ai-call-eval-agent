@@ -1,0 +1,22 @@
+{
+  "package_id": "pkg_src_5aeac74925c010ba_knowledge-v1",
+  "package_version": "1.0.0-prototype",
+  "task_id": "task_4dba7a03cf0f9132",
+  "source_sha256": "5aeac74925c010ba716a8a1a6e5c240ad44249ba38f072b874df4b7030d25a40",
+  "knowledge_version": "knowledge-v1",
+  "included_candidate_ids": [
+    "cand_a036859b38e7dc65",
+    "cand_003a0e7f747b0ba0",
+    "cand_9ac3bc573a28f311",
+    "cand_041124b2eb6c0161",
+    "cand_502fd8c9f22aff41",
+    "cand_eb0b81acaa63d03c",
+    "cand_fc0fc5e191cfcdfb",
+    "cand_9b272f7cf8aeaf59",
+    "cand_a9624b0ace1beb7e",
+    "cand_a323004955839040"
+  ],
+  "reviewer": "operator",
+  "approved_at": "2026-08-18T09:55:54+00:00",
+  "prototype_only": true
+}

@@ -1,0 +1,135 @@
+{
+  "version": "knowledge-v1",
+  "items": [
+    {
+      "candidate_id": "cand_a036859b38e7dc65",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "您好",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0002_28_34"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    },
+    {
+      "candidate_id": "cand_003a0e7f747b0ba0",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "诶您好，我这边主要是做互联网和AI方向的猎头，您这会儿方便沟通吗？",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0004_81_176"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    },
+    {
+      "candidate_id": "cand_9ac3bc573a28f311",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "我这边正在帮北京瓴岳科技有限公司看一个后端方向的机会。我看到您其实工作经验也比较丰富，所以想跟您简单沟通一下。这个团队主要是做金融相关的业务。我不知道您最近是否会看这类机会，如果合适的话，可以看看是否愿意和这个团队碰一碰。",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0006_219_552"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    },
+    {
+      "candidate_id": "cand_041124b2eb6c0161",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "那我加您微信吧，这边有岗位相关资料可以发您看看。",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0008_607_679"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    },
+    {
+      "candidate_id": "cand_502fd8c9f22aff41",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "行，那您直接报一下手机号，我这边记一下。",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0010_710_770"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    },
+    {
+      "candidate_id": "cand_eb0b81acaa63d03c",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "幺三五，后面还有吗？",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0012_801_831"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    },
+    {
+      "candidate_id": "cand_fc0fc5e191cfcdfb",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "幺三五八二九四，还有吗？",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0014_863_899"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    },
+    {
+      "candidate_id": "cand_9b272f7cf8aeaf59",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "幺三五八二九四六六七七，对吗？",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0016_931_976"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    },
+    {
+      "candidate_id": "cand_a9624b0ace1beb7e",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "诶，那我稍后加下您，您到时候微信里会收到一个服务通知，您点开通过下就行。",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0018_1007_1115"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    },
+    {
+      "candidate_id": "cand_a323004955839040",
+      "kind": "unclassified_knowledge",
+      "status": "approved",
+      "claim": "行啊，那保持联系，再见！",
+      "evidence_refs": [
+        "evd_src_5aeac74925c010ba_utt_0020_1146_1182"
+      ],
+      "applicability_scope": "scope_pending",
+      "note": "Prototype keeps the claim unclassified until human review.",
+      "approved_by": "operator",
+      "approved_at": "2026-08-18T09:55:54+00:00"
+    }
+  ]
+}

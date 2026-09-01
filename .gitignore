@@ -11,14 +11,3 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
-
-# Runtime logs
-runtime*.log
-
-# Company-sensitive runtime and interview data
-backend/data/db.json
-input-docs/*
-!input-docs/.gitkeep
-runs/*
-!runs/.gitkeep
-reference/

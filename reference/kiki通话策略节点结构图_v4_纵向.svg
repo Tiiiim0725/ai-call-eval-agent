@@ -1,0 +1,788 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="5310" viewBox="0 0 2200 5310" role="img" aria-labelledby="chart-title chart-desc">
+  <title id="chart-title">Kiki 猎头通话策略纵向阅读图</title>
+  <desc id="chart-desc">七个纵向决策阶段、41 个业务节点和 59 条业务跳转。所有常规流程自上向下，横向位置只表示同一判断的并列去向，三个回环以局部返回引用表示。</desc>
+  <defs>
+    <marker id="arrow-struct" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94A3B8" /></marker>
+    <marker id="arrow-pos" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94A3B8" /></marker>
+    <marker id="arrow-neg" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94A3B8" /></marker>
+    <marker id="arrow-neutral" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94A3B8" /></marker>
+    <marker id="arrow-life" markerWidth="12" markerHeight="12" refX="10" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8B5CF6" /></marker>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.10" /></filter>
+  </defs>
+  <style>
+    svg { background: #FFFFFF; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    .chart-title { font-size: 28px; font-weight: 700; fill: #0F172A; }
+    .chart-subtitle { font-size: 15px; fill: #64748B; }
+    .legend-text { font-size: 14px; fill: #334155; }
+    .phase-index { font-size: 24px; font-weight: 700; fill: #0F172A; }
+    .phase-title { font-size: 18px; font-weight: 700; fill: #0F172A; }
+    .phase-question { font-size: 14px; font-weight: 600; fill: #334155; }
+    .phase-output { font-size: 13px; fill: #64748B; }
+    .node { cursor: default; }
+    .node-shape { filter: url(#soft-shadow); transition: stroke-width 120ms ease; }
+    .node:hover .node-shape { stroke-width: 4px; }
+    .node-text { pointer-events: none; dominant-baseline: middle; }
+    .node-title { font-size: 15px; font-weight: 700; }
+    .node-detail { font-size: 13px; font-weight: 400; }
+    .node-action .node-shape { fill: #FFFFFF; stroke: #64748B; stroke-width: 2; }
+    .node-action .node-text { fill: #0F172A; }
+    .node-decision .node-shape { fill: #FEFCE8; stroke: #CA8A04; stroke-width: 2.2; }
+    .node-decision .node-text { fill: #422006; }
+    .node-unknown .node-shape { fill: #F8FAFC; stroke: #94A3B8; stroke-width: 2; stroke-dasharray: 8 6; }
+    .node-unknown .node-text { fill: #64748B; }
+    .node-success .node-shape { fill: #ECFDF5; stroke: #16A34A; stroke-width: 2.2; }
+    .node-success .node-text { fill: #14532D; }
+    .node-handoff .node-shape { fill: #ECFEFF; stroke: #0891B2; stroke-width: 2.2; }
+    .node-handoff .node-text { fill: #164E63; }
+    .node-closed .node-shape { fill: #FFF1F2; stroke: #E11D48; stroke-width: 2.2; }
+    .node-closed .node-text { fill: #881337; }
+    .edge path { stroke-linecap: round; stroke-linejoin: round; opacity: 0.92; }
+    .edge:hover path { stroke-width: 5px; opacity: 1; }
+    .edge-label rect { fill: #FFFFFF; fill-opacity: 0.96; stroke-width: 1; }
+    .edge-label text { font-size: 13px; font-weight: 600; }
+    .edge-label.tone-struct rect { stroke: #CBD5E1; } .edge-label.tone-struct text { fill: #475569; }
+    .edge-label.tone-pos rect { fill: #F0FDF4; stroke: #86EFAC; } .edge-label.tone-pos text { fill: #166534; }
+    .edge-label.tone-neg rect { fill: #FFF7ED; stroke: #FDBA74; } .edge-label.tone-neg text { fill: #9A3412; }
+    .edge-label.tone-neutral rect { fill: #F8FAFC; stroke: #CBD5E1; } .edge-label.tone-neutral text { fill: #475569; }
+    .edge-label.tone-life rect { fill: #FAF5FF; stroke: #C4B5FD; } .edge-label.tone-life text { fill: #6D28D9; }
+    .return-reference path { opacity: 0.82; }
+  </style>
+
+  <rect x="0" y="0" width="2200" height="5310" fill="#FFFFFF" />
+  <text x="34" y="48" class="chart-title">Kiki 猎头通话策略节点图｜纵向阅读版</text>
+  <text x="34" y="78" class="chart-subtitle">从上到下阅读；横向只表示同一判断的并列去向；↺ 表示回到既有节点。</text>
+  <text x="34" y="108" class="chart-subtitle">41 个业务节点 · 59 条业务跳转 · 7 个决策阶段 · 未增加图外规则</text>
+
+  <g id="legend" transform="translate(1320 42)">
+    <text x="0" y="18" class="legend-text">分支标签</text>
+    <g class="edge-label tone-pos" transform="translate(150 12)"><rect x="-45" y="-13" width="90" height="26" rx="8" /><text x="0" y="5" text-anchor="middle">正向</text></g>
+    <g class="edge-label tone-neg" transform="translate(260 12)"><rect x="-45" y="-13" width="90" height="26" rx="8" /><text x="0" y="5" text-anchor="middle">负向</text></g>
+    <g class="edge-label tone-neutral" transform="translate(390 12)"><rect x="-62" y="-13" width="124" height="26" rx="8" /><text x="0" y="5" text-anchor="middle">中立 / 模糊</text></g>
+    <line x1="475" y1="12" x2="545" y2="12" stroke="#8B5CF6" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow-life)" /><text x="560" y="18" class="legend-text">跨通话</text>
+  </g>
+
+  <g id="phases">
+    <g id="phase-L0" class="phase">
+      <rect x="12" y="165" width="2176" height="410" rx="14" fill="#F8FAFC" stroke="#CBD5E1" />
+      <rect x="12" y="165" width="10" height="410" rx="5" fill="#64748B" />
+      <line x1="290" y1="182" x2="290" y2="558" stroke="#CBD5E1" stroke-width="1.5" />
+      <text x="42" y="210" class="phase-index">L0</text>
+      <text x="42" y="240" class="phase-title">联系依据准备</text>
+      <text x="42" y="277" class="phase-question">拿什么理由联系？</text>
+      <text x="42" y="304" class="phase-output">输出：已核实的单一切入点</text>
+    </g>
+    <g id="phase-L1" class="phase">
+      <rect x="12" y="585" width="2176" height="490" rx="14" fill="#EFF6FF" stroke="#CBD5E1" />
+      <rect x="12" y="585" width="10" height="490" rx="5" fill="#3B82F6" />
+      <line x1="290" y1="602" x2="290" y2="1058" stroke="#CBD5E1" stroke-width="1.5" />
+      <text x="42" y="630" class="phase-index">L1</text>
+      <text x="42" y="660" class="phase-title">对话许可判断</text>
+      <text x="42" y="697" class="phase-question">此刻是否允许交流？</text>
+      <text x="42" y="724" class="phase-output">输出：继续、约回拨或无表达空间</text>
+    </g>
+    <g id="phase-L2" class="phase">
+      <rect x="12" y="1085" width="2176" height="780" rx="14" fill="#F5F3FF" stroke="#CBD5E1" />
+      <rect x="12" y="1085" width="10" height="780" rx="5" fill="#8B5CF6" />
+      <line x1="290" y1="1102" x2="290" y2="1848" stroke="#CBD5E1" stroke-width="1.5" />
+      <text x="42" y="1130" class="phase-index">L2</text>
+      <text x="42" y="1160" class="phase-title">建联与初始意向识别</text>
+      <text x="42" y="1197" class="phase-question">以什么方式进入？候选人是什么状态？</text>
+      <text x="42" y="1224" class="phase-output">输出：积极、观望、拒绝或需解释</text>
+    </g>
+    <g id="phase-L3" class="phase">
+      <rect x="12" y="1875" width="2176" height="690" rx="14" fill="#F0FDF4" stroke="#CBD5E1" />
+      <rect x="12" y="1875" width="10" height="690" rx="5" fill="#22C55E" />
+      <line x1="290" y1="1892" x2="290" y2="2548" stroke="#CBD5E1" stroke-width="1.5" />
+      <text x="42" y="1920" class="phase-index">L3</text>
+      <text x="42" y="1950" class="phase-title">机会响应与推进深度</text>
+      <text x="42" y="1987" class="phase-question">候选人愿意投入到什么程度？</text>
+      <text x="42" y="2014" class="phase-output">输出：岗位深聊、长期价值或岗位拒绝</text>
+    </g>
+    <g id="phase-L4" class="phase">
+      <rect x="12" y="2575" width="2176" height="1280" rx="14" fill="#FFF7ED" stroke="#CBD5E1" />
+      <rect x="12" y="2575" width="10" height="1280" rx="5" fill="#F97316" />
+      <line x1="290" y1="2592" x2="290" y2="3838" stroke="#CBD5E1" stroke-width="1.5" />
+      <text x="42" y="2620" class="phase-index">L4</text>
+      <text x="42" y="2650" class="phase-title">拒绝诊断与机会空间重构</text>
+      <text x="42" y="2687" class="phase-question">拒绝关闭了什么，又留下什么可能？</text>
+      <text x="42" y="2714" class="phase-output">输出：关闭、目标方向或新切口</text>
+    </g>
+    <g id="phase-L5" class="phase">
+      <rect x="12" y="3865" width="2176" height="810" rx="14" fill="#ECFEFF" stroke="#CBD5E1" />
+      <rect x="12" y="3865" width="10" height="810" rx="5" fill="#06B6D4" />
+      <line x1="290" y1="3882" x2="290" y2="4658" stroke="#CBD5E1" stroke-width="1.5" />
+      <text x="42" y="3910" class="phase-index">L5</text>
+      <text x="42" y="3940" class="phase-title">关系承接与本通结果</text>
+      <text x="42" y="3977" class="phase-question">本通形成什么关系资产？</text>
+      <text x="42" y="4004" class="phase-output">输出：联系池、回拨、平台承接或关闭</text>
+    </g>
+    <g id="phase-L6" class="phase">
+      <rect x="12" y="4685" width="2176" height="610" rx="14" fill="#FAF5FF" stroke="#CBD5E1" />
+      <rect x="12" y="4685" width="10" height="610" rx="5" fill="#A855F7" />
+      <line x1="290" y1="4702" x2="290" y2="5278" stroke="#CBD5E1" stroke-width="1.5" />
+      <text x="42" y="4730" class="phase-index">L6</text>
+      <text x="42" y="4760" class="phase-title">跨通话治理与再次触达</text>
+      <text x="42" y="4797" class="phase-question">是否再联系，下一次必须改变什么？</text>
+      <text x="42" y="4824" class="phase-output">输出：再次触达、降频或停止</text>
+    </g></g>
+  <g id="edges">
+    <g id="edge-1" class="edge tone-struct" data-from="N00" data-to="N01">
+      <title>N00 → N01</title>
+      <path d="M 1050 330 L 1050 420" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-2" class="edge tone-struct" data-from="N01" data-to="N10">
+      <title>N01 → N10</title>
+      <path d="M 1050 510 L 1050 642" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-3" class="edge tone-neutral" data-from="N10" data-to="N11">
+      <title>N10 → N11：不方便</title>
+      <path d="M 1050 758 L 1050 782 L 500 782 L 500 805" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(880 785)">
+      <rect x="-23" y="-13" width="46" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">不方便</text>
+    </g>
+    </g>
+    <g id="edge-4" class="edge tone-struct" data-from="N11" data-to="B11">
+      <title>N11 → B11</title>
+      <path d="M 500 895 L 500 952" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-5" class="edge tone-pos" data-from="B11" data-to="E02">
+      <title>B11 → E02：约到时间/取得号码</title>
+      <path d="M 390 1010 L 330 1010 L 330 4460 L 750 4460 L 750 4511" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(430 1090)">
+      <rect x="-45" y="-13" width="90" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">约到时间/取得号码</text>
+    </g>
+    </g>
+    <g id="edge-6" class="edge tone-neg" data-from="B11" data-to="N52">
+      <title>B11 → N52：拒绝留号但允许承接</title>
+      <path d="M 610 1010 L 730 1010 L 730 4340 L 900 4340" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(620 1090)">
+      <rect x="-45" y="-13" width="90" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">拒绝留号但允许承接</text>
+    </g>
+    </g>
+    <g id="edge-7" class="edge tone-neg" data-from="B11" data-to="E05">
+      <title>B11 → E05：直接挂断</title>
+      <path d="M 610 1010 L 2110 1010 L 2110 4460 L 1690 4460 L 1690 4511" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(1900 1010)">
+      <rect x="-25" y="-13" width="50" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">直接挂断</text>
+    </g>
+    </g>
+    <g id="edge-8" class="edge tone-neg" data-from="N10" data-to="E05">
+      <title>N10 → E05：不给表达空间</title>
+      <path d="M 1155 700 L 2110 700 L 2110 4460 L 1690 4460 L 1690 4511" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(1250 700)">
+      <rect x="-33" y="-13" width="66" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">不给表达空间</text>
+    </g>
+    </g>
+    <g id="edge-9" class="edge tone-pos" data-from="N10" data-to="G20">
+      <title>N10 → G20：方便</title>
+      <path d="M 1050 758 L 1050 1146" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(1120 955)">
+      <rect x="-23" y="-13" width="46" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">方便</text>
+    </g>
+    </g>
+    <g id="edge-10" class="edge tone-struct" data-from="G20" data-to="N20">
+      <title>G20 → N20</title>
+      <path d="M 1050 1254 L 1050 1322" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-11" class="edge tone-neutral" data-from="G20" data-to="N21">
+      <title>G20 → N21：真实访谈前提</title>
+      <path d="M 1050 1254 L 1050 1289 L 500 1289 L 500 1324" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(800 1280)">
+      <rect x="-33" y="-13" width="66" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">真实访谈前提</text>
+    </g>
+    </g>
+    <g id="edge-12" class="edge tone-pos" data-from="N21" data-to="N50">
+      <title>N21 → N50：接受交流</title>
+      <path d="M 500 1436 L 500 1450 L 810 1450 L 810 3990 L 880 3990" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(420 1480)">
+      <rect x="-25" y="-13" width="50" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">接受交流</text>
+    </g>
+    </g>
+    <g id="edge-13" class="edge tone-neg" data-from="N21" data-to="N52">
+      <title>N21 → N52：只拒绝加微信</title>
+      <path d="M 650 1380 L 730 1380 L 730 4340 L 900 4340" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(650 1480)">
+      <rect x="-33" y="-13" width="66" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">只拒绝加微信</text>
+    </g>
+    </g>
+    <g id="edge-14" class="edge tone-neg" data-from="N21" data-to="U08">
+      <title>N21 → U08：拒绝访谈</title>
+      <path d="M 500 1436 L 500 1450 L 1765 1450 L 1765 1510" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(680 1450)">
+      <rect x="-25" y="-13" width="50" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">拒绝访谈</text>
+    </g>
+    </g>
+    <g id="edge-15" class="edge tone-struct" data-from="N20" data-to="N22">
+      <title>N20 → N22</title>
+      <path d="M 1050 1438 L 1050 1511" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-16" class="edge tone-pos" data-from="N22" data-to="N30">
+      <title>N22 → N30：积极且有时间</title>
+      <path d="M 1050 1629 L 1050 1934" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(1150 1830)">
+      <rect x="-33" y="-13" width="66" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">积极且有时间</text>
+    </g>
+    </g>
+    <g id="edge-17" class="edge tone-pos" data-from="N22" data-to="N50">
+      <title>N22 → N50：积极但时间不足</title>
+      <path d="M 935 1570 L 810 1570 L 810 3990 L 880 3990" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(850 1635)">
+      <rect x="-37" y="-13" width="74" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">积极但时间不足</text>
+    </g>
+    </g>
+    <g id="edge-18" class="edge tone-neutral" data-from="N22" data-to="N32">
+      <title>N22 → N32：只是观望</title>
+      <path d="M 1050 1629 L 1050 1958 L 500 1958 L 500 2286" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(790 1940)">
+      <rect x="-25" y="-13" width="50" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">只是观望</text>
+    </g>
+    </g>
+    <g id="edge-19" class="edge tone-struct" data-from="N32" data-to="N50">
+      <title>N32 → N50</title>
+      <path d="M 500 2394 L 500 2440 L 810 2440 L 810 3990 L 880 3990" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-20" class="edge tone-neutral" data-from="N22" data-to="U01">
+      <title>N22 → U01：着急看机会</title>
+      <path d="M 1165 1570 L 1900 1570 L 1900 1694" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(1280 1570)">
+      <rect x="-29" y="-13" width="58" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">着急看机会</text>
+    </g>
+    </g>
+    <g id="edge-21" class="edge tone-neg" data-from="N22" data-to="N40">
+      <title>N22 → N40：开场不考虑</title>
+      <path d="M 1165 1570 L 1320 1570 L 1320 2690 L 1375 2690" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(1220 1640)">
+      <rect x="-29" y="-13" width="58" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">开场不考虑</text>
+    </g>
+    </g>
+    <g id="edge-22" class="edge tone-neutral" data-from="N22" data-to="N23">
+      <title>N22 → N23：为什么找我</title>
+      <path d="M 1050 1629 L 1050 1657 L 1500 1657 L 1500 1685" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(1280 1655)">
+      <rect x="-29" y="-13" width="58" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">为什么找我</text>
+    </g>
+    </g>
+    <g id="edge-23" class="edge return-reference tone-neutral" data-from="N23" data-to="N22">
+      <title>N23 → N22：解释后重判 N22</title>
+      <path d="M 1500 1795 L 1500 1823 L 1458 1823" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      <g class="edge-label tone-neutral" transform="translate(1355 1823)">
+        <rect x="-77" y="-13" width="154" height="26" rx="8" />
+        <text x="0" y="5" text-anchor="middle">↺ 解释后重判 N22</text>
+      </g>
+    </g>
+    <g id="edge-24" class="edge tone-struct" data-from="N30" data-to="N31">
+      <title>N30 → N31</title>
+      <path d="M 1050 2056 L 1050 2114" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-25" class="edge tone-pos" data-from="N31" data-to="N33">
+      <title>N31 → N33：有兴趣</title>
+      <path d="M 1050 2226 L 1050 2284" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(1120 2255)">
+      <rect x="-23" y="-13" width="46" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">有兴趣</text>
+    </g>
+    </g>
+    <g id="edge-26" class="edge tone-pos" data-from="N33" data-to="N34">
+      <title>N33 → N34：有时间</title>
+      <path d="M 1050 2396 L 1050 2442" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(1120 2420)">
+      <rect x="-23" y="-13" width="46" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">有时间</text>
+    </g>
+    </g>
+    <g id="edge-27" class="edge tone-neutral" data-from="N33" data-to="N50">
+      <title>N33 → N50：时间不足</title>
+      <path d="M 950 2340 L 810 2340 L 810 3990 L 880 3990" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(890 2410)">
+      <rect x="-25" y="-13" width="50" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">时间不足</text>
+    </g>
+    </g>
+    <g id="edge-28" class="edge tone-struct" data-from="N34" data-to="N50">
+      <title>N34 → N50</title>
+      <path d="M 1050 2558 L 1050 3930" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-29" class="edge tone-neg" data-from="N31" data-to="N41">
+      <title>N31 → N41：不感兴趣/已接触</title>
+      <path d="M 1150 2170 L 1320 2170 L 1320 3200 L 1345 3200" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(1230 2240)">
+      <rect x="-41" y="-13" width="82" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">不感兴趣/已接触</text>
+    </g>
+    </g>
+    <g id="edge-30" class="edge tone-neutral" data-from="N31" data-to="N32">
+      <title>N31 → N32：只是观望</title>
+      <path d="M 1050 2226 L 1050 2256 L 500 2256 L 500 2286" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(800 2255)">
+      <rect x="-25" y="-13" width="50" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">只是观望</text>
+    </g>
+    </g>
+    <g id="edge-31" class="edge tone-struct" data-from="N40" data-to="C40">
+      <title>N40 → C40</title>
+      <path d="M 1500 2733 L 1500 2794" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-32" class="edge tone-neg" data-from="C40" data-to="E05">
+      <title>C40 → E05：不给表达空间</title>
+      <path d="M 1610 2850 L 2110 2850 L 2110 4460 L 1690 4460 L 1690 4511" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(1740 2850)">
+      <rect x="-33" y="-13" width="66" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">不给表达空间</text>
+    </g>
+    </g>
+    <g id="edge-33" class="edge tone-pos" data-from="C40" data-to="R40">
+      <title>C40 → R40：仍允许继续</title>
+      <path d="M 1500 2906 L 1500 2959" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(1575 2935)">
+      <rect x="-29" y="-13" width="58" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">仍允许继续</text>
+    </g>
+    </g>
+    <g id="edge-34" class="edge tone-neg" data-from="R40" data-to="E04">
+      <title>R40 → E04：所有机会</title>
+      <path d="M 1625 3020 L 2030 3020 L 2030 4460 L 1360 4460 L 1360 4511" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(1700 3020)">
+      <rect x="-25" y="-13" width="50" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">所有机会</text>
+    </g>
+    </g>
+    <g id="edge-35" class="edge tone-neg" data-from="R40" data-to="N41">
+      <title>R40 → N41：当前岗位/公司</title>
+      <path d="M 1500 3081 L 1500 3146" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(1600 3110)">
+      <rect x="-37" y="-13" width="74" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">当前岗位/公司</text>
+    </g>
+    </g>
+    <g id="edge-36" class="edge tone-neutral" data-from="R40" data-to="U02">
+      <title>R40 → U02：含糊且不回答</title>
+      <path d="M 1500 3081 L 1500 3103 L 1900 3103 L 1900 3124" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(1760 3090)">
+      <rect x="-33" y="-13" width="66" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">含糊且不回答</text>
+    </g>
+    </g>
+    <g id="edge-37" class="edge tone-struct" data-from="N41" data-to="R41">
+      <title>N41 → R41</title>
+      <path d="M 1500 3254 L 1500 3312" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-38" class="edge tone-pos" data-from="R41" data-to="N43">
+      <title>R41 → N43：给出目标</title>
+      <path d="M 1500 3428 L 1500 3486" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(1580 3455)">
+      <rect x="-25" y="-13" width="50" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">给出目标</text>
+    </g>
+    </g>
+    <g id="edge-39" class="edge tone-struct" data-from="N43" data-to="G43">
+      <title>N43 → G43</title>
+      <path d="M 1500 3594 L 1500 3649" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-40" class="edge tone-pos" data-from="G43" data-to="N50">
+      <title>G43 → N50：有资源且愿继续</title>
+      <path d="M 1500 3771 L 1500 3850 L 1050 3850 L 1050 3930" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(1380 3845)">
+      <rect x="-37" y="-13" width="74" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">有资源且愿继续</text>
+    </g>
+    </g>
+    <g id="edge-41" class="edge tone-neutral" data-from="G43" data-to="U10">
+      <title>G43 → U10：无资源/继续拒绝</title>
+      <path d="M 1500 3771 L 1500 3753 L 1900 3753 L 1900 3734" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(1725 3735)">
+      <rect x="-41" y="-13" width="82" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">无资源/继续拒绝</text>
+    </g>
+    </g>
+    <g id="edge-42" class="edge tone-neutral" data-from="R41" data-to="N45">
+      <title>R41 → N45：未给目标但愿交流</title>
+      <path d="M 1500 3428 L 1500 3457 L 1050 3457 L 1050 3486" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(1250 3460)">
+      <rect x="-41" y="-13" width="82" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">未给目标但愿交流</text>
+    </g>
+    </g>
+    <g id="edge-43" class="edge return-reference tone-neutral" data-from="N45" data-to="N41">
+      <title>N45 → N41：继续探索 N41</title>
+      <path d="M 1050 3594 L 1050 3622 L 1092 3622" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      <g class="edge-label tone-neutral" transform="translate(1195 3622)">
+        <rect x="-75" y="-13" width="150" height="26" rx="8" />
+        <text x="0" y="5" text-anchor="middle">↺ 继续探索 N41</text>
+      </g>
+    </g>
+    <g id="edge-44" class="edge tone-neg" data-from="R41" data-to="E04">
+      <title>R41 → E04：继续拒绝</title>
+      <path d="M 1615 3370 L 2030 3370 L 2030 4460 L 1360 4460 L 1360 4511" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(1750 3370)">
+      <rect x="-25" y="-13" width="50" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">继续拒绝</text>
+    </g>
+    </g>
+    <g id="edge-45" class="edge tone-struct" data-from="N50" data-to="W50">
+      <title>N50 → W50</title>
+      <path d="M 1050 4050 L 1050 4109" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-46" class="edge tone-pos" data-from="W50" data-to="E01">
+      <title>W50 → E01：愿意</title>
+      <path d="M 1050 4231 L 1050 4250 L 430 4250 L 430 4511" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-pos" transform="translate(820 4250)">
+      <rect x="-23" y="-13" width="46" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">愿意</text>
+    </g>
+    </g>
+    <g id="edge-47" class="edge tone-neg" data-from="W50" data-to="N52">
+      <title>W50 → N52：不愿意</title>
+      <path d="M 1050 4231 L 1050 4286" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(1125 4255)">
+      <rect x="-23" y="-13" width="46" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">不愿意</text>
+    </g>
+    </g>
+    <g id="edge-48" class="edge tone-neutral" data-from="W50" data-to="U03">
+      <title>W50 → U03：未明确回应</title>
+      <path d="M 1050 4231 L 1050 4250 L 1560 4250 L 1560 4294" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(1350 4250)">
+      <rect x="-29" y="-13" width="58" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">未明确回应</text>
+    </g>
+    </g>
+    <g id="edge-49" class="edge tone-struct" data-from="N52" data-to="E03">
+      <title>N52 → E03</title>
+      <path d="M 1050 4394 L 1050 4511" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    </g>
+    <g id="edge-50" class="edge tone-life" data-from="E01" data-to="N70">
+      <title>E01 → N70</title>
+      <path d="M 430 4589 L 430 4710 L 1050 4710 L 1050 4766" fill="none" stroke="#8B5CF6" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow-life)" />
+      
+    </g>
+    <g id="edge-51" class="edge tone-life" data-from="E02" data-to="N70">
+      <title>E02 → N70</title>
+      <path d="M 750 4589 L 750 4710 L 1050 4710 L 1050 4766" fill="none" stroke="#8B5CF6" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow-life)" />
+      
+    </g>
+    <g id="edge-52" class="edge tone-life" data-from="E03" data-to="N70">
+      <title>E03 → N70</title>
+      <path d="M 1050 4589 L 1050 4766" fill="none" stroke="#8B5CF6" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow-life)" />
+      
+    </g>
+    <g id="edge-53" class="edge tone-life" data-from="E04" data-to="N70">
+      <title>E04 → N70</title>
+      <path d="M 1360 4589 L 1360 4710 L 1050 4710 L 1050 4766" fill="none" stroke="#8B5CF6" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow-life)" />
+      
+    </g>
+    <g id="edge-54" class="edge tone-life" data-from="E05" data-to="N70">
+      <title>E05 → N70</title>
+      <path d="M 1690 4589 L 1690 4710 L 1050 4710 L 1050 4766" fill="none" stroke="#8B5CF6" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow-life)" />
+      
+    </g>
+    <g id="edge-55" class="edge tone-life" data-from="N70" data-to="N60">
+      <title>N70 → N60</title>
+      <path d="M 1050 4874 L 1050 4931" fill="none" stroke="#8B5CF6" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow-life)" />
+      
+    </g>
+    <g id="edge-56" class="edge tone-life" data-from="N60" data-to="N61">
+      <title>N60 → N61：可继续跟进</title>
+      <path d="M 1050 5049 L 1050 5106" fill="none" stroke="#8B5CF6" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow-life)" />
+      
+    <g class="edge-label tone-life" transform="translate(1160 5075)">
+      <rect x="-29" y="-13" width="58" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">可继续跟进</text>
+    </g>
+    </g>
+    <g id="edge-57" class="edge return-reference tone-life" data-from="N61" data-to="N10">
+      <title>N61 → N10：下一通回到 N10</title>
+      <path d="M 1050 5214 L 1050 5242 L 1092 5242" fill="none" stroke="#8B5CF6" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow-life)" />
+      <g class="edge-label tone-life" transform="translate(1195 5242)">
+        <rect x="-77" y="-13" width="154" height="26" rx="8" />
+        <text x="0" y="5" text-anchor="middle">↺ 下一通回到 N10</text>
+      </g>
+    </g>
+    <g id="edge-58" class="edge tone-neg" data-from="N60" data-to="E06">
+      <title>N60 → E06：低匹配/强烈反感</title>
+      <path d="M 1050 5049 L 1050 5085 L 520 5085 L 520 5121" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neg" transform="translate(790 5075)">
+      <rect x="-41" y="-13" width="82" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">低匹配/强烈反感</text>
+    </g>
+    </g>
+    <g id="edge-59" class="edge tone-neutral" data-from="N60" data-to="U04">
+      <title>N60 → U04：高价值 + 强反感</title>
+      <path d="M 1050 5049 L 1050 5082 L 1580 5082 L 1580 5114" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrow-struct)" />
+      
+    <g class="edge-label tone-neutral" transform="translate(1340 5075)">
+      <rect x="-45" y="-13" width="90" height="26" rx="8" />
+      <text x="0" y="5" text-anchor="middle">高价值 + 强反感</text>
+    </g>
+    </g></g>
+  <g id="nodes">
+    <g id="node-N00" class="node node-action" data-node-id="N00">
+      <title>N00  外呼前画像读取｜分数｜学历｜公司｜title｜方向｜地点｜薪资｜年限</title>
+      <rect class="node-shape" x="900" y="240" width="300" height="90" rx="12" />
+      <text class="node-text" x="1050" y="270" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N00  外呼前画像读取</tspan><tspan x="1050" dy="20" class="node-detail">分数｜学历｜公司｜title</tspan><tspan x="1050" dy="20" class="node-detail">方向｜地点｜薪资｜年限</tspan></text>
+    </g>
+    <g id="node-N01" class="node node-action" data-node-id="N01">
+      <title>N01  生成一个最强切入点｜默认选择一个岗位详细切入</title>
+      <rect class="node-shape" x="895" y="420" width="310" height="90" rx="12" />
+      <text class="node-text" x="1050" y="460" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N01  生成一个最强切入点</tspan><tspan x="1050" dy="20" class="node-detail">默认选择一个岗位详细切入</tspan></text>
+    </g>
+    <g id="node-N10" class="node node-decision" data-node-id="N10">
+      <title>N10｜现在是否方便？</title>
+      <polygon class="node-shape" points="1050,642 1155,700 1050,758 945,700" />
+      <text class="node-text" x="1050" y="695" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N10</tspan><tspan x="1050" dy="20" class="node-detail">现在是否方便？</tspan></text>
+    </g>
+    <g id="node-N11" class="node node-action" data-node-id="N11">
+      <title>N11  先约方便时间｜可行时再要真实号码或微信</title>
+      <rect class="node-shape" x="360" y="805" width="280" height="90" rx="12" />
+      <text class="node-text" x="500" y="845" text-anchor="middle"><tspan x="500" dy="0" class="node-title">N11  先约方便时间</tspan><tspan x="500" dy="20" class="node-detail">可行时再要真实号码或微信</tspan></text>
+    </g>
+    <g id="node-B11" class="node node-decision" data-node-id="B11">
+      <title>回拨与｜联系方式结果</title>
+      <polygon class="node-shape" points="500,952 610,1010 500,1068 390,1010" />
+      <text class="node-text" x="500" y="1005" text-anchor="middle"><tspan x="500" dy="0" class="node-title">回拨与</tspan><tspan x="500" dy="20" class="node-detail">联系方式结果</tspan></text>
+    </g>
+    <g id="node-G20" class="node node-decision" data-node-id="G20">
+      <title>选择｜开场模式</title>
+      <polygon class="node-shape" points="1050,1146 1145,1200 1050,1254 955,1200" />
+      <text class="node-text" x="1050" y="1195" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">选择</tspan><tspan x="1050" dy="20" class="node-detail">开场模式</tspan></text>
+    </g>
+    <g id="node-N20" class="node node-action" data-node-id="N20">
+      <title>N20  标准开场｜身份｜来源｜为什么找他｜简短机会范围｜询问目标</title>
+      <rect class="node-shape" x="895" y="1322" width="310" height="116" rx="12" />
+      <text class="node-text" x="1050" y="1365" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N20  标准开场</tspan><tspan x="1050" dy="20" class="node-detail">身份｜来源｜为什么找他</tspan><tspan x="1050" dy="20" class="node-detail">简短机会范围｜询问目标</tspan></text>
+    </g>
+    <g id="node-N21" class="node node-action" data-node-id="N21">
+      <title>N21  专家访谈式建联｜说明真实项目目的｜询问是否接受</title>
+      <rect class="node-shape" x="350" y="1324" width="300" height="112" rx="12" />
+      <text class="node-text" x="500" y="1365" text-anchor="middle"><tspan x="500" dy="0" class="node-title">N21  专家访谈式建联</tspan><tspan x="500" dy="20" class="node-detail">说明真实项目目的</tspan><tspan x="500" dy="20" class="node-detail">询问是否接受</tspan></text>
+    </g>
+    <g id="node-N22" class="node node-decision" data-node-id="N22">
+      <title>N22｜首轮状态或反馈</title>
+      <polygon class="node-shape" points="1050,1511 1165,1570 1050,1629 935,1570" />
+      <text class="node-text" x="1050" y="1565" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N22</tspan><tspan x="1050" dy="20" class="node-detail">首轮状态或反馈</tspan></text>
+    </g>
+    <g id="node-N23" class="node node-action" data-node-id="N23">
+      <title>N23  回答为什么找我｜只用已核实画像与岗位事实</title>
+      <rect class="node-shape" x="1350" y="1685" width="300" height="110" rx="12" />
+      <text class="node-text" x="1500" y="1735" text-anchor="middle"><tspan x="1500" dy="0" class="node-title">N23  回答为什么找我</tspan><tspan x="1500" dy="20" class="node-detail">只用已核实画像与岗位事实</tspan></text>
+    </g>
+    <g id="node-U01" class="node node-unknown" data-node-id="U01">
+      <title>UNSPECIFIED / U01｜着急与积极的动作差异未定义</title>
+      <rect class="node-shape" x="1765" y="1694" width="270" height="92" rx="12" />
+      <text class="node-text" x="1900" y="1735" text-anchor="middle"><tspan x="1900" dy="0" class="node-title">UNSPECIFIED / U01</tspan><tspan x="1900" dy="20" class="node-detail">着急与积极的动作差异未定义</tspan></text>
+    </g>
+    <g id="node-U08" class="node node-unknown" data-node-id="U08">
+      <title>UNSPECIFIED / U08｜拒绝访谈后的走法未定义</title>
+      <rect class="node-shape" x="1765" y="1464" width="270" height="92" rx="12" />
+      <text class="node-text" x="1900" y="1505" text-anchor="middle"><tspan x="1900" dy="0" class="node-title">UNSPECIFIED / U08</tspan><tspan x="1900" dy="20" class="node-detail">拒绝访谈后的走法未定义</tspan></text>
+    </g>
+    <g id="node-N30" class="node node-action" data-node-id="N30">
+      <title>N30  单岗位详细介绍｜一个抓手｜业务属性｜2–3 个相关优势｜不强称匹配</title>
+      <rect class="node-shape" x="890" y="1934" width="320" height="122" rx="12" />
+      <text class="node-text" x="1050" y="1980" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N30  单岗位详细介绍</tspan><tspan x="1050" dy="20" class="node-detail">一个抓手｜业务属性</tspan><tspan x="1050" dy="20" class="node-detail">2–3 个相关优势｜不强称匹配</tspan></text>
+    </g>
+    <g id="node-N31" class="node node-decision" data-node-id="N31">
+      <title>N31｜对岗位的反馈</title>
+      <polygon class="node-shape" points="1050,2114 1150,2170 1050,2226 950,2170" />
+      <text class="node-text" x="1050" y="2165" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N31</tspan><tspan x="1050" dy="20" class="node-detail">对岗位的反馈</tspan></text>
+    </g>
+    <g id="node-N33" class="node node-decision" data-node-id="N33">
+      <title>是否有时间｜继续深聊？</title>
+      <polygon class="node-shape" points="1050,2284 1150,2340 1050,2396 950,2340" />
+      <text class="node-text" x="1050" y="2335" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">是否有时间</tspan><tspan x="1050" dy="20" class="node-detail">继续深聊？</tspan></text>
+    </g>
+    <g id="node-N34" class="node node-action" data-node-id="N34">
+      <title>N34  后续深聊核实｜方向｜城市｜职级｜薪资范围｜机会偏好；薪资不在开场追问</title>
+      <rect class="node-shape" x="890" y="2442" width="320" height="116" rx="12" />
+      <text class="node-text" x="1050" y="2485" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N34  后续深聊核实</tspan><tspan x="1050" dy="20" class="node-detail">方向｜城市｜职级｜薪资范围</tspan><tspan x="1050" dy="20" class="node-detail">机会偏好；薪资不在开场追问</tspan></text>
+    </g>
+    <g id="node-N32" class="node node-action" data-node-id="N32">
+      <title>N32  观望转长期价值｜市场｜行业｜岗位资源｜负责人连接</title>
+      <rect class="node-shape" x="340" y="2286" width="320" height="108" rx="12" />
+      <text class="node-text" x="500" y="2335" text-anchor="middle"><tspan x="500" dy="0" class="node-title">N32  观望转长期价值</tspan><tspan x="500" dy="20" class="node-detail">市场｜行业｜岗位资源｜负责人连接</tspan></text>
+    </g>
+    <g id="node-N40" class="node node-action" data-node-id="N40">
+      <title>N40  开场拒绝入口</title>
+      <rect class="node-shape" x="1375" y="2647" width="250" height="86" rx="12" />
+      <text class="node-text" x="1500" y="2695" text-anchor="middle"><tspan x="1500" dy="0" class="node-title">N40  开场拒绝入口</tspan></text>
+    </g>
+    <g id="node-C40" class="node node-decision" data-node-id="C40">
+      <title>是否仍允许｜继续表达？</title>
+      <polygon class="node-shape" points="1500,2794 1610,2850 1500,2906 1390,2850" />
+      <text class="node-text" x="1500" y="2845" text-anchor="middle"><tspan x="1500" dy="0" class="node-title">是否仍允许</tspan><tspan x="1500" dy="20" class="node-detail">继续表达？</tspan></text>
+    </g>
+    <g id="node-R40" class="node node-decision" data-node-id="R40">
+      <title>拒绝当前岗位/公司｜还是所有机会？</title>
+      <polygon class="node-shape" points="1500,2959 1625,3020 1500,3081 1375,3020" />
+      <text class="node-text" x="1500" y="3015" text-anchor="middle"><tspan x="1500" dy="0" class="node-title">拒绝当前岗位/公司</tspan><tspan x="1500" dy="20" class="node-detail">还是所有机会？</tspan></text>
+    </g>
+    <g id="node-U02" class="node node-unknown" data-node-id="U02">
+      <title>UNSPECIFIED / U02｜含糊拒绝的分类规则未定义</title>
+      <rect class="node-shape" x="1765" y="3124" width="270" height="92" rx="12" />
+      <text class="node-text" x="1900" y="3165" text-anchor="middle"><tspan x="1900" dy="0" class="node-title">UNSPECIFIED / U02</tspan><tspan x="1900" dy="20" class="node-detail">含糊拒绝的分类规则未定义</tspan></text>
+    </g>
+    <g id="node-N41" class="node node-action" data-node-id="N41">
+      <title>N41  停止硬推原岗位｜反问目标方向或公司</title>
+      <rect class="node-shape" x="1345" y="3146" width="310" height="108" rx="12" />
+      <text class="node-text" x="1500" y="3195" text-anchor="middle"><tspan x="1500" dy="0" class="node-title">N41  停止硬推原岗位</tspan><tspan x="1500" dy="20" class="node-detail">反问目标方向或公司</tspan></text>
+    </g>
+    <g id="node-R41" class="node node-decision" data-node-id="R41">
+      <title>是否给出｜目标方向？</title>
+      <polygon class="node-shape" points="1500,3312 1615,3370 1500,3428 1385,3370" />
+      <text class="node-text" x="1500" y="3365" text-anchor="middle"><tspan x="1500" dy="0" class="node-title">是否给出</tspan><tspan x="1500" dy="20" class="node-detail">目标方向？</tspan></text>
+    </g>
+    <g id="node-N43" class="node node-action" data-node-id="N43">
+      <title>N43  用目标方向承接｜其他资源｜反向 BD｜行业分析</title>
+      <rect class="node-shape" x="1350" y="3486" width="300" height="108" rx="12" />
+      <text class="node-text" x="1500" y="3535" text-anchor="middle"><tspan x="1500" dy="0" class="node-title">N43  用目标方向承接</tspan><tspan x="1500" dy="20" class="node-detail">其他资源｜反向 BD｜行业分析</tspan></text>
+    </g>
+    <g id="node-G43" class="node node-decision" data-node-id="G43">
+      <title>确有资源/价值｜且愿意继续？</title>
+      <polygon class="node-shape" points="1500,3649 1620,3710 1500,3771 1380,3710" />
+      <text class="node-text" x="1500" y="3705" text-anchor="middle"><tspan x="1500" dy="0" class="node-title">确有资源/价值</tspan><tspan x="1500" dy="20" class="node-detail">且愿意继续？</tspan></text>
+    </g>
+    <g id="node-N45" class="node node-action" data-node-id="N45">
+      <title>N45  回退画像深挖｜地点｜背景｜经历｜海外事实</title>
+      <rect class="node-shape" x="895" y="3486" width="310" height="108" rx="12" />
+      <text class="node-text" x="1050" y="3535" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N45  回退画像深挖</tspan><tspan x="1050" dy="20" class="node-detail">地点｜背景｜经历｜海外事实</tspan></text>
+    </g>
+    <g id="node-U10" class="node node-unknown" data-node-id="U10">
+      <title>UNSPECIFIED / U10｜无资源或继续拒绝的收口未定义</title>
+      <rect class="node-shape" x="1760" y="3734" width="280" height="92" rx="12" />
+      <text class="node-text" x="1900" y="3775" text-anchor="middle"><tspan x="1900" dy="0" class="node-title">UNSPECIFIED / U10</tspan><tspan x="1900" dy="20" class="node-detail">无资源或继续拒绝的收口未定义</tspan></text>
+    </g>
+    <g id="node-N50" class="node node-action" data-node-id="N50">
+      <title>N50  先给具体联系价值｜市场信息｜后续岗位｜行业行情｜负责人对接｜薪酬支持</title>
+      <rect class="node-shape" x="880" y="3930" width="340" height="120" rx="12" />
+      <text class="node-text" x="1050" y="3975" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N50  先给具体联系价值</tspan><tspan x="1050" dy="20" class="node-detail">市场信息｜后续岗位｜行业行情</tspan><tspan x="1050" dy="20" class="node-detail">负责人对接｜薪酬支持</tspan></text>
+    </g>
+    <g id="node-W50" class="node node-decision" data-node-id="W50">
+      <title>是否愿意加微信｜或留真实号码？</title>
+      <polygon class="node-shape" points="1050,4109 1170,4170 1050,4231 930,4170" />
+      <text class="node-text" x="1050" y="4165" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">是否愿意加微信</tspan><tspan x="1050" dy="20" class="node-detail">或留真实号码？</tspan></text>
+    </g>
+    <g id="node-N52" class="node node-action" data-node-id="N52">
+      <title>N52  退到脉脉留言｜留下猎头微信和手机号</title>
+      <rect class="node-shape" x="900" y="4286" width="300" height="108" rx="12" />
+      <text class="node-text" x="1050" y="4335" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N52  退到脉脉留言</tspan><tspan x="1050" dy="20" class="node-detail">留下猎头微信和手机号</tspan></text>
+    </g>
+    <g id="node-U03" class="node node-unknown" data-node-id="U03">
+      <title>UNSPECIFIED / U03｜联系请求无回应的追问次数未定义</title>
+      <rect class="node-shape" x="1425" y="4294" width="270" height="92" rx="12" />
+      <text class="node-text" x="1560" y="4335" text-anchor="middle"><tspan x="1560" dy="0" class="node-title">UNSPECIFIED / U03</tspan><tspan x="1560" dy="20" class="node-detail">联系请求无回应的追问次数未定义</tspan></text>
+    </g>
+    <g id="node-E01" class="node node-success" data-node-id="E01">
+      <title>E01  进入持续跟进池</title>
+      <rect class="node-shape" x="305" y="4511" width="250" height="78" rx="39" />
+      <text class="node-text" x="430" y="4555" text-anchor="middle"><tspan x="430" dy="0" class="node-title">E01  进入持续跟进池</tspan></text>
+    </g>
+    <g id="node-E02" class="node node-handoff" data-node-id="E02">
+      <title>E02  已约回拨/取得号码</title>
+      <rect class="node-shape" x="625" y="4511" width="250" height="78" rx="39" />
+      <text class="node-text" x="750" y="4555" text-anchor="middle"><tspan x="750" dy="0" class="node-title">E02  已约回拨/取得号码</tspan></text>
+    </g>
+    <g id="node-E03" class="node node-handoff" data-node-id="E03">
+      <title>E03  平台承接完成</title>
+      <rect class="node-shape" x="920" y="4511" width="260" height="78" rx="39" />
+      <text class="node-text" x="1050" y="4555" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">E03  平台承接完成</tspan></text>
+    </g>
+    <g id="node-E04" class="node node-closed" data-node-id="E04">
+      <title>E04  当前话题关闭</title>
+      <rect class="node-shape" x="1230" y="4511" width="260" height="78" rx="39" />
+      <text class="node-text" x="1360" y="4555" text-anchor="middle"><tspan x="1360" dy="0" class="node-title">E04  当前话题关闭</tspan></text>
+    </g>
+    <g id="node-E05" class="node node-closed" data-node-id="E05">
+      <title>E05  本通无表达空间</title>
+      <rect class="node-shape" x="1560" y="4511" width="260" height="78" rx="39" />
+      <text class="node-text" x="1690" y="4555" text-anchor="middle"><tspan x="1690" dy="0" class="node-title">E05  本通无表达空间</tspan></text>
+    </g>
+    <g id="node-N70" class="node node-action" data-node-id="N70">
+      <title>N70  记录触达｜时间｜反馈｜下次时间｜下次切入点</title>
+      <rect class="node-shape" x="890" y="4766" width="320" height="108" rx="12" />
+      <text class="node-text" x="1050" y="4815" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N70  记录触达</tspan><tspan x="1050" dy="20" class="node-detail">时间｜反馈｜下次时间｜下次切入点</tspan></text>
+    </g>
+    <g id="node-N60" class="node node-decision" data-node-id="N60">
+      <title>N60｜二次触达风险门</title>
+      <polygon class="node-shape" points="1050,4931 1165,4990 1050,5049 935,4990" />
+      <text class="node-text" x="1050" y="4985" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N60</tspan><tspan x="1050" dy="20" class="node-detail">二次触达风险门</tspan></text>
+    </g>
+    <g id="node-N61" class="node node-action" data-node-id="N61">
+      <title>N61  承认上次联系并给新理由｜换时间｜措辞｜切口｜话题｜价值点</title>
+      <rect class="node-shape" x="880" y="5106" width="340" height="108" rx="12" />
+      <text class="node-text" x="1050" y="5155" text-anchor="middle"><tspan x="1050" dy="0" class="node-title">N61  承认上次联系并给新理由</tspan><tspan x="1050" dy="20" class="node-detail">换时间｜措辞｜切口｜话题｜价值点</tspan></text>
+    </g>
+    <g id="node-U04" class="node node-unknown" data-node-id="U04">
+      <title>UNSPECIFIED / U04｜高价值与强反感并存时未定义</title>
+      <rect class="node-shape" x="1440" y="5114" width="280" height="92" rx="12" />
+      <text class="node-text" x="1580" y="5155" text-anchor="middle"><tspan x="1580" dy="0" class="node-title">UNSPECIFIED / U04</tspan><tspan x="1580" dy="20" class="node-detail">高价值与强反感并存时未定义</tspan></text>
+    </g>
+    <g id="node-E06" class="node node-closed" data-node-id="E06">
+      <title>E06  降低频率或停止</title>
+      <rect class="node-shape" x="390" y="5121" width="260" height="78" rx="39" />
+      <text class="node-text" x="520" y="5165" text-anchor="middle"><tspan x="520" dy="0" class="node-title">E06  降低频率或停止</tspan></text>
+    </g></g>
+</svg>
