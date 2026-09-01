@@ -11,5 +11,6 @@
 @media(max-width:1050px){.graph-canvas,.graph-detail{height:620px}}
  .match-note{padding:8px 10px;background:#2a2117;border-left:3px solid var(--amber);color:#efc17d;font-size:12px}
 .notice-amber{border-color:#63492a;background:#2a2117;color:#efc17d}.notice-red{border-color:#733b40;background:#2a171a;color:#ffb1b1}
+.graph-condition-issues{display:grid;gap:8px;margin-top:10px}.graph-condition-issue{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 10px;padding-top:8px;border-top:1px solid #63383a}.graph-condition-issue .actions{grid-column:2}.graph-condition-issue-edge{min-height:30px;padding:4px 9px;text-align:left}
 .graph-svg-edge-group{cursor:pointer}.graph-svg-edge-group:hover .graph-svg-edge{stroke:var(--amber);stroke-width:4}.graph-svg-edge-group:hover .graph-svg-label{fill:#ffd08a}
 .edge-condition-workspace{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.edge-condition-workspace .panel-title{margin-bottom:5px}.edge-condition-workspace>p{margin:4px 0 9px}.edge-condition-editor{min-height:110px;line-height:1.6}.edge-condition-editor.is-dirty{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber)}.edge-dirty-note{margin:5px 0;color:var(--amber);font-size:11px}.edge-condition-actions{margin-top:8px}.edge-condition-meta{margin-top:9px}.edge-condition-meta div{grid-template-columns:90px minmax(0,1fr)}

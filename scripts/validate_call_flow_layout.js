@@ -46,13 +46,17 @@ const first = layout(nodes, edges, profile);
 const second = layout(nodes, edges, profile);
 const p = id => first.positions.get(`show:${id}`);
 if (!(p('a').y < p('b').y && p('b').y < p('d').y && p('d').y < p('e').y)) throw new Error('phase Y order failed');
-if (!(p('b').x < p('a').x && p('a').x < p('c').x)) throw new Error('resistant/neutral/receptive X order failed');
-if (p('d').x !== p('a').x) throw new Error('mixed incoming directions must center');
+if (!(p('b').x < p('a').x && p('a').x < p('c').x)) throw new Error('local resistant/receptive branch direction failed');
+if (!(p('b').x < p('d').x && p('d').x < p('c').x)) throw new Error('mixed incoming directions must remain between their parents');
 if (!first.backEdgeIds.has('show:da')) throw new Error('back edge not marked');
+if (first.guides.some(guide => guide.data.guide === 'lane')) throw new Error('global lane guides must not be rendered');
+if (first.edgeRoutes.get('show:ab').curveDistance === first.edgeRoutes.get('show:ac').curveDistance) throw new Error('sibling routes must not share one curve track');
 if (JSON.stringify([...first.positions]) !== JSON.stringify([...second.positions])) throw new Error('layout is not deterministic');
 if (new Set([...first.positions.values()].map(value => `${value.x}:${value.y}`)).size !== nodes.length) throw new Error('node overlap');
+const restored = layout(nodes, edges, { ...profile, manual_positions: { a: { x: 777.25, y: 888.5 } } });
+if (restored.positions.get('show:a').x !== 777.25 || restored.positions.get('show:a').y !== 888.5) throw new Error('saved manual position was not restored');
 
-// A busy phase must grow sideways inside its lane instead of becoming one cramped vertical column.
+// A busy phase may use multiple sub-rows and must keep node rectangles apart.
 const denseNodes = Array.from({ length: 8 }, (_, index) => ({ id: `dense:${index}`, sourceId: `dense-${index}` }));
 const denseProfile = {
   status: 'ready',
@@ -61,9 +65,14 @@ const denseProfile = {
   edge_annotations: {},
 };
 const dense = layout(denseNodes, [], denseProfile);
-const denseX = new Set(denseNodes.map(node => dense.positions.get(node.id).x));
 const denseY = new Set(denseNodes.map(node => dense.positions.get(node.id).y));
-if (denseX.size !== denseNodes.length) throw new Error('dense lane did not expand horizontally');
-if (denseY.size !== 1) throw new Error('dense phase should remain one readable horizontal row');
-if (dense.width < 8 * 220) throw new Error('dense graph width did not grow with node count');
-console.log(JSON.stringify({ status: 'PASS', contract: 'call-flow-coordinates-v0.46' }));
+if (denseY.size <= 1) throw new Error('dense phase did not use vertical breathing room');
+for (let left = 0; left < denseNodes.length; left += 1) {
+  for (let right = left + 1; right < denseNodes.length; right += 1) {
+    const a = dense.positions.get(denseNodes[left].id);
+    const b = dense.positions.get(denseNodes[right].id);
+    if (Math.abs(a.x - b.x) < 180 && Math.abs(a.y - b.y) < 70) throw new Error('dense phase contains overlapping nodes');
+  }
+}
+if (dense.width < 1400) throw new Error('dense graph did not preserve a readable canvas width');
+console.log(JSON.stringify({ status: 'PASS', contract: 'call-flow-relative-force-v0.48' }));

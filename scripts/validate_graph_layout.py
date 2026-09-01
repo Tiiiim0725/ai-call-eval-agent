@@ -81,10 +81,35 @@ with tempfile.TemporaryDirectory() as tmp:
     )
     assert saved["node_annotations"]["n2"] == {"phase_id": "needs_matching", "lane_override": "neutral", "source": "manual"}
     assert saved["edge_annotations"]["e1"]["route_tendency"] == "unknown"
+    positioned = app.save_graph_layout(
+        task["task_id"], "graph_layout_test", analyzed["materialized_graph_hash"],
+        [], [], "reviewer", [{"node_id": "n2", "x": 432.25, "y": 765.5}],
+    )
+    assert positioned["manual_positions"]["n2"] == {"x": 432.25, "y": 765.5}
+    assert app.get_graph_layout(task["task_id"], "graph_layout_test")["manual_positions"]["n2"]["x"] == 432.25
+    assert app.save_graph_layout(
+        task["task_id"], "graph_layout_test", analyzed["materialized_graph_hash"],
+        [], [], "reviewer", [{"node_id": "missing", "x": 1, "y": 2}],
+    )["error"] == "graph_node_not_found"
+    assert app.save_graph_layout(
+        task["task_id"], "graph_layout_test", analyzed["materialized_graph_hash"],
+        [], [], "reviewer", [{"node_id": "n2", "x": float("nan"), "y": 2}],
+    )["error"] == "invalid_layout_position"
+    reset = app.save_graph_layout(
+        task["task_id"], "graph_layout_test", analyzed["materialized_graph_hash"],
+        [], [], "reviewer", [], True,
+    )
+    assert reset["manual_positions"] == {}
+    positioned = app.save_graph_layout(
+        task["task_id"], "graph_layout_test", analyzed["materialized_graph_hash"],
+        [], [], "reviewer", [{"node_id": "n2", "x": 432.25, "y": 765.5}],
+    )
     assert app.save_graph_layout(task["task_id"], "graph_layout_test", "old", [], [], "x")["error"] == "layout_stale"
     graph_after = app.export_graph_document(task["task_id"], "graph_layout_test")
     assert graph_after["content_hash"] == graph_before["content_hash"]
     assert graph_after["layout_sha256"] != graph_after["content_hash"]
+    assert graph_after["layout_profile"]["version"] == 2
+    assert graph_after["layout_profile"]["manual_positions"]["n2"]["y"] == 765.5
 
     db = app._load_db()
     db["knowledge"]["node_new"] = {
@@ -104,6 +129,7 @@ with tempfile.TemporaryDirectory() as tmp:
     refreshed = app.analyze_graph_layout(task["task_id"], "graph_layout_test")
     assert fake.calls == 2 and refreshed["node_annotations"]["n2"]["source"] == "manual"
     assert refreshed["node_annotations"]["node_new"]["phase_id"] != "unassigned"
+    assert refreshed["manual_positions"]["n2"]["x"] == 432.25
 
     app.llm_client = FailingLayoutLLM()
     failed = app.analyze_graph_layout(task["task_id"], "graph_layout_fail")
@@ -130,6 +156,8 @@ with tempfile.TemporaryDirectory() as tmp:
         bundle["graph"], "portable_json", graph_after["filename"], bundle["layout_profile"],
     )
     assert imported.get("layout_id") and not imported.get("layout_warnings")
+    imported_profile = next(item for item in app._load_db()["graph_layout_profiles"] if item["layout_id"] == imported["layout_id"])
+    assert imported_profile["manual_positions"]["n2"]["x"] == 432.25
     assert app.get_graph_layout("wrong-task", "graph_layout_test")["error"] == "task_not_found"
 
-print(json.dumps({"status": "PASS", "contract": "call-flow-layout-v0.46"}, ensure_ascii=False))
+print(json.dumps({"status": "PASS", "contract": "call-flow-layout-v0.49"}, ensure_ascii=False))

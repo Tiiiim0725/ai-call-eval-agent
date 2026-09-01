@@ -131,6 +131,10 @@ with tempfile.TemporaryDirectory() as tmp:
     assert fuzzy in execution["prompt_content"] and fuzzy in strategy["prompt_content"]
     assert execution["route_table"] == strategy["route_table"]
     assert execution["route_table_sha256"] == strategy["route_table_sha256"]
+    assert execution["llm_model"] == "fake"
+    assert "## LLM 编译的执行说明" in execution["prompt_content"]
+    assert "策略评价正文" in execution["prompt_content"]
+    assert "# 权威执行附录｜不得省略或改写" in execution["prompt_content"]
     assert "未提供的信息表示未知，不得自动推导为否定" in execution["prompt_content"]
 
     compiled = app.compile_release(task_id=task["task_id"])
@@ -139,6 +143,9 @@ with tempfile.TemporaryDirectory() as tmp:
     manifest = compilation["manifest"]
     assert manifest["route_table_sha256"] == hashlib.sha256(compilation["route_table"].encode()).hexdigest()
     assert manifest["execution_prompt_sha256"] == hashlib.sha256(compilation["execution_prompt"].encode()).hexdigest()
+    assert manifest["execution_llm_model"] == "fake"
+    assert manifest["llm_config_snapshot_execution"]["model"] == "fake"
+    assert manifest["execution_compiler"] == "llm-wrapper+deterministic-appendix-v1"
     db = app._load_db()
     db.setdefault("gates", []).append({"gate_id": "G5", "task_id": task["task_id"], "decision": "approved"})
     app._save_db(db)

@@ -23,10 +23,15 @@ def main():
                    "/generate-execution-prompt", "execution_prompt_sha256",
                    "route_table_sha256", "/node-content", "save-node-content",
                    "/graph-export", "导出当前 Graph JSON", "/graph-layout",
-                   "电话流程（七阶段）", "save-layout-annotation", "恢复自动判断"):
+                   "电话流程（七阶段）", "save-layout-annotation", "恢复自动判断",
+                   "context-muted", "control-point-distances", "相对来源节点",
+                   "dragfree", "position_updates", "graph-layout-reset", "重新初始化布局",
+                   "LLM 生成电话执行 Prompt", "LLM 负责生成执行说明层"):
         assert marker in app_js, marker
     assert 'data-view="evidence"' not in index
-    assert 'src="app.js?v=0.46.1"' in index, "frontend bundle must be cache-busted for call-flow layout"
+    assert 'src="app.js?v=0.53.0"' in index, "frontend bundle must be cache-busted for v0.53 issue locators"
+    assert 'href="styles.css?v=0.53.0"' in index, "frontend styles must be cache-busted for v0.53 issue locators"
+    assert "delete-task" in app_js and "/tasks/delete" in app_js
     for mojibake in ("锛", "鈥", "宸ヤ綔", "鐢佃瘽"):
         assert mojibake not in app_js + index, mojibake
 

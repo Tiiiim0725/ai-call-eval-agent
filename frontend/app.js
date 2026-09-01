@@ -17,7 +17,7 @@ const state = {
   compilations: [], releases: [], selectedCompilation: null, selectedRelease: null,
   graphMode: 'candidate', graphLayout: 'call_flow', selectedGraphItem: null,
   graphBaselineId: null, graphCandidateId: null, graphLayoutProfile: null,
-  graphLayoutRequests: new Set(), scriptWorkspaces: new Map()
+  scriptWorkspaces: new Map()
 };
 
 function esc(value) {
@@ -207,7 +207,7 @@ function renderTasks() {
     <div class="layout">
       <div>
         <div class="panel"><div class="panel-title"><h3>已导入任务</h3>${badge(`${state.tasks.length} 个`, 'blue')}</div>
-          <div class="table-wrap"><table class="data-table"><thead><tr><th style="width:34%">任务</th><th>文件</th><th style="width:18%">Gate</th></tr></thead><tbody>${state.tasks.map(task => `<tr data-id="${esc(task.task_id)}" class="${task.task_id === currentTaskId() ? 'is-selected' : ''}"><td class="mono">${esc(task.task_id)}</td><td>${esc(taskLabel(task))}</td><td>${esc(task.current_gate || 'G0')}</td></tr>`).join('')}</tbody></table></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th style="width:31%">任务</th><th>文件</th><th style="width:13%">Gate</th><th style="width:80px">操作</th></tr></thead><tbody>${state.tasks.map(task => `<tr data-id="${esc(task.task_id)}" class="${task.task_id === currentTaskId() ? 'is-selected' : ''}"><td class="mono">${esc(task.task_id)}</td><td>${esc(taskLabel(task))}</td><td>${esc(task.current_gate || 'G0')}</td><td><button class="button button-danger delete-task" data-task-id="${esc(task.task_id)}" data-task-label="${esc(taskLabel(task))}">删除</button></td></tr>`).join('')}</tbody></table></div>
         </div>
         <div class="panel" id="import-panel"><div class="panel-title"><h3>导入访谈 TXT</h3><div class="actions"><input id="local-txt" type="file" accept=".txt,text/plain" hidden><button class="button button-primary" id="choose-txt">选择本地 TXT</button><button class="button" id="load-files">读取服务器目录</button><button class="button" id="rerun-task" ${!state.currentTask ? 'disabled' : ''}>从当前来源新建重跑任务</button></div></div><p class="muted">重复上传不会覆盖旧快照；需要从 G0 重跑时，请从当前不可变来源新建任务。</p><div id="file-list" class="empty">可选择本机新 TXT，或读取服务器输入目录中的文件</div></div>
       </div>
@@ -400,6 +400,31 @@ function classifyDisplayedEdgeConditions(graph) {
   return { ...graph, edges, conditionIssues: issues };
 }
 
+function renderConditionIssueNotice(issues, graph) {
+  if (!issues.length) return '';
+  const nodes = new Map((graph.nodes || []).map(node => [node.id, node]));
+  const edges = new Map((graph.edges || []).map(edge => [edge.id, edge]));
+  const nodeLabel = id => nodes.get(id)?.label || id || '未知节点';
+  const rows = issues.map((issue, index) => {
+    const edgeIds = issue.edgeIds?.length ? issue.edgeIds : [issue.id].filter(Boolean);
+    const related = edgeIds.map(id => edges.get(id)).filter(Boolean);
+    const first = related[0] || issue;
+    const source = nodeLabel(first.source);
+    let explanation;
+    if (issue.error === 'duplicate_branch_condition') {
+      const targets = related.map(edge => nodeLabel(edge.target)).join('、');
+      explanation = `${source} 的条件“${first.rawCondition || first.label || ''}”同时指向 ${targets}。仅确认不会解除冲突，需将各条条件改成可区分的语义。`;
+    } else if (issue.error === 'edge_condition_review_required') {
+      explanation = `${source} → ${nodeLabel(first.target)}：模型标记条件存在不确定性，需要保存并确认。`;
+    } else {
+      explanation = `${source} → ${nodeLabel(first.target)}：多出口边缺少路由条件。`;
+    }
+    const buttons = related.map(edge => `<button class="button graph-condition-issue-edge" data-condition-edge-id="${esc(edge.id)}">查看 → ${esc(nodeLabel(edge.target))}</button>`).join('');
+    return `<div class="graph-condition-issue"><b>问题 ${index + 1}</b><span>${esc(explanation)}</span><div class="actions">${buttons}</div></div>`;
+  }).join('');
+  return `<div class="notice notice-red"><b>有 ${issues.length} 项路由条件问题，已阻断整图批准与 Prompt 编译。</b><div class="graph-condition-issues">${rows}</div></div>`;
+}
+
 function materializedCandidate(model) {
   const changedBaselineNodes = new Set(model.candidateNodes.flatMap(node => node.baselineRefs));
   const changedBaselineEdges = new Set(model.candidateEdges.flatMap(edge => edge.baselineRefs));
@@ -504,104 +529,207 @@ const CALL_FLOW_PHASES = [
   { phase_id: 'conversion', label: '转化动作', order: 6 },
   { phase_id: 'closure_followup', label: '收口与后续', order: 7 },
 ];
-const CALL_FLOW_LANES = [
-  { id: 'resistant', label: '左 · 抗拒 / 负向' },
-  { id: 'neutral', label: '中 · 中性 / 未知' },
-  { id: 'receptive', label: '右 · 接受 / 正向' },
-];
+const CALL_FLOW_BRANCH_OFFSET = { resistant: -300, neutral: 0, receptive: 300, unknown: 0 };
 
 function graphItemLayoutId(item) {
   return String(item?.candidateObjectId || item?.sourceId || '').trim();
 }
 
+function stableLayoutUnit(value) {
+  let hash = 2166136261;
+  for (const character of String(value || '')) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
+}
+
 function callFlowLayout(nodes, edges, profile) {
   const phases = [...(profile?.phases || CALL_FLOW_PHASES), { phase_id: 'unassigned', label: '待分类', order: 8 }];
   const phaseOrder = new Map(phases.map(phase => [phase.phase_id, Number(phase.order)]));
-  const nodeByDisplayId = new Map(nodes.map(node => [node.id, node]));
-  const incoming = new Map(nodes.map(node => [node.id, []]));
-  edges.filter(edge => edge.kind !== 'match').forEach(edge => {
-    const tendency = profile?.edge_annotations?.[graphItemLayoutId(edge)]?.route_tendency || 'unknown';
-    if (incoming.has(edge.target)) incoming.get(edge.target).push(tendency);
-  });
   const phaseFor = node => {
     const phase = profile?.node_annotations?.[graphItemLayoutId(node)]?.phase_id || 'unassigned';
     return phaseOrder.has(phase) ? phase : 'unassigned';
   };
-  const laneFor = node => {
-    const override = profile?.node_annotations?.[graphItemLayoutId(node)]?.lane_override;
-    if (override) return override;
-    const directions = incoming.get(node.id) || [];
-    if (!directions.length || directions.includes('unknown')) return 'neutral';
-    const unique = new Set(directions);
-    return unique.size === 1 && ['resistant', 'neutral', 'receptive'].includes(directions[0]) ? directions[0] : 'neutral';
+  const nodePhaseOrders = new Map(nodes.map(node => [node.id, phaseOrder.get(phaseFor(node)) || 8]));
+  const strategyEdges = edges.filter(edge => edge.kind !== 'match' && nodePhaseOrders.has(edge.source) && nodePhaseOrders.has(edge.target));
+  const tendencyFor = edge => {
+    const value = profile?.edge_annotations?.[graphItemLayoutId(edge)]?.route_tendency || 'unknown';
+    return Object.hasOwn(CALL_FLOW_BRANCH_OFFSET, value) ? value : 'unknown';
   };
-  const groups = new Map();
-  nodes.forEach(node => {
-    const key = `${phaseFor(node)}:${laneFor(node)}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(node);
+  const incoming = new Map(nodes.map(node => [node.id, []]));
+  const outgoing = new Map(nodes.map(node => [node.id, []]));
+  strategyEdges.forEach(edge => {
+    incoming.get(edge.target)?.push(edge);
+    outgoing.get(edge.source)?.push(edge);
   });
-  const slotWidth = 240;
-  const laneGap = 180;
-  const sidePadding = 140;
-  const laneWidths = CALL_FLOW_LANES.map(lane => Math.max(420, ...phases.map(phase =>
-    (groups.get(`${phase.phase_id}:${lane.id}`) || []).length * slotWidth
-  )));
-  const laneStarts = [];
-  let cursor = sidePadding;
-  laneWidths.forEach(width => { laneStarts.push(cursor); cursor += width + laneGap; });
-  const width = cursor - laneGap + sidePadding;
-  const laneCenters = laneWidths.map((laneWidth, index) => laneStarts[index] + laneWidth / 2);
-  const positions = new Map();
-  const nodePhaseOrders = new Map();
-  const guides = CALL_FLOW_LANES.map((lane, index) => ({
-    data: { id: `layout:lane:${lane.id}`, label: lane.label, guide: 'lane', guideWidth: laneWidths[index] - 20, guideHeight: 38 },
-    position: { x: laneCenters[index], y: 28 }, selectable: false, grabbable: false,
-  }));
-  let top = 70;
+
+  // 分支方向是“相对来源节点”的展示倾向，不再把整图切成固定的左/中/右三栏。
+  const edgeIdealDx = new Map();
+  const edgeFanRank = new Map();
+  outgoing.forEach(sourceEdges => {
+    const groups = new Map();
+    sourceEdges.forEach(edge => {
+      const tendency = tendencyFor(edge);
+      if (!groups.has(tendency)) groups.set(tendency, []);
+      groups.get(tendency).push(edge);
+    });
+    groups.forEach((group, tendency) => {
+      group.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      group.forEach((edge, index) => {
+        const fanRank = index - (group.length - 1) / 2;
+        edgeFanRank.set(edge.id, fanRank);
+        edgeIdealDx.set(edge.id, CALL_FLOW_BRANCH_OFFSET[tendency] + fanRank * 150);
+      });
+    });
+  });
+
+  const nodesByPhase = new Map(phases.map(phase => [phase.phase_id, []]));
+  nodes.forEach(node => nodesByPhase.get(phaseFor(node)).push(node));
+  const phaseMetrics = new Map();
+  let top = 50;
   phases.forEach(phase => {
-    const laneGroups = CALL_FLOW_LANES.map(lane => groups.get(`${phase.phase_id}:${lane.id}`) || []);
-    const height = 190;
-    guides.push({
-      data: { id: `layout:phase:${phase.phase_id}`, label: `${phase.order <= 7 ? `${phase.order}. ` : ''}${phase.label}`, guide: 'phase', guideWidth: width - 80, guideHeight: height },
-      position: { x: width / 2, y: top + height / 2 }, selectable: false, grabbable: false,
+    const count = nodesByPhase.get(phase.phase_id).length;
+    const rows = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(Math.max(1, count)))));
+    const height = Math.max(270, 160 + rows * 115);
+    phaseMetrics.set(phase.phase_id, { top, height, center: top + height / 2, rows });
+    top += height + 105;
+  });
+
+  const positions = new Map();
+  const initialX = new Map();
+  const graphCenter = 1500;
+  phases.forEach(phase => {
+    const group = nodesByPhase.get(phase.phase_id).sort((a, b) => graphItemLayoutId(a).localeCompare(graphItemLayoutId(b)));
+    const metric = phaseMetrics.get(phase.phase_id);
+    group.forEach((node, index) => {
+      const parentTargets = (incoming.get(node.id) || []).map(edge => {
+        const parent = positions.get(edge.source);
+        return parent ? parent.x + (edgeIdealDx.get(edge.id) || 0) : null;
+      }).filter(Number.isFinite);
+      const rootOffset = (index - (group.length - 1) / 2) * 250;
+      const x = (parentTargets.length ? parentTargets.reduce((sum, value) => sum + value, 0) / parentTargets.length : graphCenter + rootOffset)
+        + (stableLayoutUnit(node.id) - 0.5) * 50;
+      const row = index % metric.rows;
+      const y = metric.center + (row - (metric.rows - 1) / 2) * 102 + (stableLayoutUnit(`${node.id}:y`) - 0.5) * 12;
+      positions.set(node.id, { x, y });
+      initialX.set(node.id, x);
     });
-    laneGroups.forEach((group, laneIndex) => {
-      group.sort((a, b) => {
-        const sourceAverage = node => {
-          const sources = edges.filter(edge => edge.target === node.id).map(edge => positions.get(edge.source)?.x).filter(Number.isFinite);
-          return sources.length ? sources.reduce((sum, value) => sum + value, 0) / sources.length : Number.MAX_SAFE_INTEGER;
-        };
-        return sourceAverage(a) - sourceAverage(b) || graphItemLayoutId(a).localeCompare(graphItemLayoutId(b));
-      });
-      const groupStart = laneCenters[laneIndex] - ((group.length - 1) * slotWidth) / 2;
-      group.forEach((node, index) => {
-        positions.set(node.id, { x: groupStart + index * slotWidth, y: top + height / 2 });
-        nodePhaseOrders.set(node.id, Number(phase.order));
-      });
+  });
+
+  // 确定性的轻量约束松弛：阶段吸附、亲子边弹簧、节点排斥。
+  const sortedNodes = [...nodes].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  for (let iteration = 0; iteration < 180; iteration += 1) {
+    const forces = new Map(sortedNodes.map(node => [node.id, { x: 0, y: 0 }]));
+    sortedNodes.forEach(node => {
+      const point = positions.get(node.id);
+      const metric = phaseMetrics.get(phaseFor(node));
+      forces.get(node.id).y += (metric.center - point.y) * 0.035;
+      forces.get(node.id).x += (initialX.get(node.id) - point.x) * 0.006;
     });
-    top += height + 96;
+    strategyEdges.forEach(edge => {
+      const source = positions.get(edge.source);
+      const target = positions.get(edge.target);
+      const sourceForce = forces.get(edge.source);
+      const targetForce = forces.get(edge.target);
+      if (!source || !target || !sourceForce || !targetForce) return;
+      const backEdge = (nodePhaseOrders.get(edge.source) || 0) > (nodePhaseOrders.get(edge.target) || 99);
+      const desiredDx = edgeIdealDx.get(edge.id) || 0;
+      const xError = (target.x - source.x) - desiredDx;
+      const spring = backEdge ? 0.006 : 0.018;
+      sourceForce.x += xError * spring;
+      targetForce.x -= xError * spring;
+      if (nodePhaseOrders.get(edge.source) === nodePhaseOrders.get(edge.target)) {
+        const desiredDy = edge.source === edge.target ? 0 : 115;
+        const yError = (target.y - source.y) - desiredDy;
+        sourceForce.y += yError * 0.009;
+        targetForce.y -= yError * 0.009;
+      }
+    });
+    for (let leftIndex = 0; leftIndex < sortedNodes.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < sortedNodes.length; rightIndex += 1) {
+        const left = sortedNodes[leftIndex];
+        const right = sortedNodes[rightIndex];
+        if (nodePhaseOrders.get(left.id) !== nodePhaseOrders.get(right.id)) continue;
+        const a = positions.get(left.id);
+        const b = positions.get(right.id);
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        if (Math.abs(dx) >= 230 || Math.abs(dy) >= 94) continue;
+        if (Math.abs(dx) < 1) dx = stableLayoutUnit(`${left.id}:${right.id}`) < 0.5 ? -1 : 1;
+        if (Math.abs(dy) < 1) dy = stableLayoutUnit(`${right.id}:${left.id}`) < 0.5 ? -1 : 1;
+        const horizontalOverlap = 230 - Math.abs(dx);
+        const verticalOverlap = 94 - Math.abs(dy);
+        if (horizontalOverlap / 230 >= verticalOverlap / 94) {
+          const push = Math.sign(dy) * Math.min(12, verticalOverlap * 0.14);
+          forces.get(left.id).y -= push;
+          forces.get(right.id).y += push;
+        } else {
+          const push = Math.sign(dx) * Math.min(18, horizontalOverlap * 0.16);
+          forces.get(left.id).x -= push;
+          forces.get(right.id).x += push;
+        }
+      }
+    }
+    sortedNodes.forEach(node => {
+      const point = positions.get(node.id);
+      const force = forces.get(node.id);
+      const metric = phaseMetrics.get(phaseFor(node));
+      point.x += Math.max(-24, Math.min(24, force.x));
+      point.y = Math.max(metric.top + 70, Math.min(metric.top + metric.height - 55, point.y + Math.max(-14, Math.min(14, force.y))));
+    });
+  }
+
+  const minimumX = Math.min(...nodes.map(node => positions.get(node.id)?.x).filter(Number.isFinite));
+  const shiftX = 190 - minimumX;
+  positions.forEach(point => { point.x = Math.round(point.x + shiftX); point.y = Math.round(point.y); });
+  nodes.forEach(node => {
+    const saved = profile?.manual_positions?.[graphItemLayoutId(node)];
+    if (Number.isFinite(Number(saved?.x)) && Number.isFinite(Number(saved?.y))) {
+      positions.set(node.id, { x: Number(saved.x), y: Number(saved.y) });
+    }
+  });
+  const finalX = nodes.map(node => positions.get(node.id)?.x).filter(Number.isFinite);
+  const finalMinimumX = Math.min(...finalX);
+  const finalMaximumX = Math.max(...finalX);
+  const width = Math.max(1400, finalMaximumX - finalMinimumX + 380);
+  const guideCenterX = (finalMinimumX + finalMaximumX) / 2;
+  const guides = phases.map(phase => {
+    const metric = phaseMetrics.get(phase.phase_id);
+    return {
+      data: { id: `layout:phase:${phase.phase_id}`, label: `${phase.order <= 7 ? `${phase.order}. ` : ''}${phase.label}`, guide: 'phase', guideWidth: width - 60, guideHeight: metric.height },
+      position: { x: guideCenterX, y: metric.center }, selectable: false, grabbable: false,
+    };
   });
   const backEdgeIds = new Set(edges.filter(edge =>
     (nodePhaseOrders.get(edge.source) || 0) > (nodePhaseOrders.get(edge.target) || 99)
   ).map(edge => edge.id));
+  const edgeRoutes = new Map();
+  strategyEdges.forEach(edge => {
+    const rank = edgeFanRank.get(edge.id) || 0;
+    const naturalSign = (edgeIdealDx.get(edge.id) || 0) < 0 ? -1 : 1;
+    const baseDistance = 24 + Math.abs(rank) * 46;
+    edgeRoutes.set(edge.id, {
+      curveDistance: Math.round((backEdgeIds.has(edge.id) ? 145 + baseDistance : baseDistance) * (rank ? Math.sign(rank) : naturalSign)),
+      curveWeight: backEdgeIds.has(edge.id) ? 0.42 : 0.5,
+    });
+  });
   const firstPhaseOrder = Math.min(...nodes.map(node => nodePhaseOrders.get(node.id)).filter(Number.isFinite));
   const firstPhaseX = nodes.filter(node => nodePhaseOrders.get(node.id) === firstPhaseOrder).map(node => positions.get(node.id)?.x).filter(Number.isFinite);
   const focusX = firstPhaseX.length ? firstPhaseX.reduce((sum, value) => sum + value, 0) / firstPhaseX.length : width / 2;
-  return { positions, guides, backEdgeIds, width, height: top, focusX };
+  return { positions, guides, backEdgeIds, edgeRoutes, width, height: top, focusX };
 }
 
 function renderNodeLayoutEditor(item, model) {
   const profile = state.graphLayoutProfile;
   const itemId = graphItemLayoutId(item);
-  const annotation = profile?.node_annotations?.[itemId] || { phase_id: 'unassigned', lane_override: null, source: 'unassigned' };
+  const annotation = profile?.node_annotations?.[itemId] || { phase_id: 'unassigned', source: 'unassigned' };
   const editable = Boolean(profile && ['ready', 'partial'].includes(profile.status));
   const phases = profile?.phases || CALL_FLOW_PHASES;
   return `<section class="graph-layout-editor" data-layout-kind="node" data-item-id="${esc(itemId)}">
     <div class="panel-title"><h4>电话流程布局标注</h4>${badge(annotation.source || 'unassigned', annotation.source === 'manual' ? 'green' : 'blue')}</div>
-    <p class="muted">只影响画布位置，不修改策略节点，也不进入 Prompt。</p>
+    <p class="muted">只影响阶段位置；横向位置会根据各条分支相对母节点自动展开，不修改策略节点，也不进入 Prompt。</p>
     <label class="field"><span>电话流程阶段</span><select class="select layout-phase" ${editable ? '' : 'disabled'}><option value="" ${annotation.phase_id === 'unassigned' ? 'selected' : ''}>待分类</option>${phases.map(phase => `<option value="${esc(phase.phase_id)}" ${annotation.phase_id === phase.phase_id ? 'selected' : ''}>${phase.order}. ${esc(phase.label)}</option>`).join('')}</select></label>
-    <label class="field"><span>横向区域覆盖</span><select class="select layout-lane" ${editable ? '' : 'disabled'}><option value="" ${!annotation.lane_override ? 'selected' : ''}>自动按入边判断</option><option value="resistant" ${annotation.lane_override === 'resistant' ? 'selected' : ''}>左 · 抗拒 / 负向</option><option value="neutral" ${annotation.lane_override === 'neutral' ? 'selected' : ''}>中 · 中性 / 未知</option><option value="receptive" ${annotation.lane_override === 'receptive' ? 'selected' : ''}>右 · 接受 / 正向</option></select></label>
     <div class="actions"><button class="button button-primary save-layout-annotation" ${editable ? '' : 'disabled'}>保存布局标注</button><button class="button reset-layout-annotation" ${editable && annotation.source === 'manual' ? '' : 'disabled'}>恢复自动判断</button></div>
   </section>`;
 }
@@ -611,11 +739,11 @@ function renderEdgeLayoutEditor(item) {
   const itemId = graphItemLayoutId(item);
   const annotation = profile?.edge_annotations?.[itemId] || { route_tendency: 'unknown', source: 'unassigned' };
   const editable = Boolean(profile && ['ready', 'partial'].includes(profile.status));
-  const options = [['resistant', '左 · 抗拒 / 负向'], ['neutral', '中 · 中性'], ['receptive', '右 · 接受 / 正向'], ['unknown', '中 · 未知 / 不判断']];
+  const options = [['resistant', '相对来源节点向左 · 抗拒 / 负向'], ['neutral', '相对来源节点向下 · 中性'], ['receptive', '相对来源节点向右 · 接受 / 正向'], ['unknown', '接近来源节点正下方 · 未知 / 不判断']];
   return `<section class="graph-layout-editor" data-layout-kind="edge" data-item-id="${esc(itemId)}">
     <div class="panel-title"><h4>分支展示方向</h4>${badge(annotation.source || 'unassigned', annotation.source === 'manual' ? 'green' : 'blue')}</div>
-    <p class="muted">仅用于左右排版；边上的路由条件仍是唯一权威语义。</p>
-    <label class="field"><span>候选人反应方向</span><select class="select layout-tendency" ${editable ? '' : 'disabled'}>${options.map(([value, label]) => `<option value="${value}" ${annotation.route_tendency === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+    <p class="muted">只决定目标节点相对本条边来源节点的偏移方向；边上的路由条件仍是唯一权威语义。</p>
+    <label class="field"><span>相对分支方向</span><select class="select layout-tendency" ${editable ? '' : 'disabled'}>${options.map(([value, label]) => `<option value="${value}" ${annotation.route_tendency === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
     <div class="actions"><button class="button button-primary save-layout-annotation" ${editable ? '' : 'disabled'}>保存布局标注</button><button class="button reset-layout-annotation" ${editable && annotation.source === 'manual' ? '' : 'disabled'}>恢复自动判断</button></div>
   </section>`;
 }
@@ -634,7 +762,7 @@ function bindLayoutEditor(item, model) {
     if (host.dataset.layoutKind === 'node') {
       const phaseId = host.querySelector('.layout-phase').value;
       if (!clearManual && !phaseId) return log('请先选择电话流程阶段', 'error');
-      common.node_updates = [{ node_id: host.dataset.itemId, phase_id: phaseId, lane_override: host.querySelector('.layout-lane').value || null, clear_manual: clearManual }];
+      common.node_updates = [{ node_id: host.dataset.itemId, phase_id: phaseId, lane_override: null, clear_manual: clearManual }];
     } else {
       common.edge_updates = [{ edge_id: host.dataset.itemId, route_tendency: host.querySelector('.layout-tendency').value, clear_manual: clearManual }];
     }
@@ -990,7 +1118,10 @@ function renderGraphCanvas() {
   const elements = [
     ...(flow?.guides || []),
     ...nodes.map(node => ({ data: { id: node.id, label: node.label, kind: node.kind, status: node.status, diffType: node.diffType || node.changeType || 'unchanged', strategy: '1', item: node }, ...(flow ? { position: flow.positions.get(node.id) } : {}) })),
-    ...edges.map(edge => ({ data: { id: edge.id, source: edge.source, target: edge.target, label: edge.label, conditionKind: edge.conditionKind || '', kind: edge.kind, diffType: edge.diffType || edge.changeType || 'unchanged', strategy: '1', item: edge }, classes: [edge.source === edge.target ? 'self-loop' : '', edge.kind === 'match' ? 'match-edge' : '', flow ? 'flow-edge' : '', flow?.backEdgeIds.has(edge.id) ? 'back-edge' : ''].filter(Boolean).join(' ') }))
+    ...edges.map(edge => {
+      const route = flow?.edgeRoutes?.get(edge.id) || {};
+      return { data: { id: edge.id, source: edge.source, target: edge.target, label: edge.label, conditionKind: edge.conditionKind || '', kind: edge.kind, diffType: edge.diffType || edge.changeType || 'unchanged', strategy: '1', item: edge, curveDistance: route.curveDistance || 24, curveWeight: route.curveWeight || 0.5 }, classes: [edge.source === edge.target ? 'self-loop' : '', edge.kind === 'match' ? 'match-edge' : '', flow && edge.kind !== 'match' ? 'flow-edge' : '', flow?.backEdgeIds.has(edge.id) ? 'back-edge' : ''].filter(Boolean).join(' ') };
+    })
   ];
   canvas.innerHTML = '';
   const layout = { name: flow || state.graphLayout === 'original' ? 'preset' : state.graphLayout === 'grid' ? 'grid' : window.cytoscapeElk ? 'elk' : 'breadthfirst', fit: !flow, padding: 30 };
@@ -1000,15 +1131,18 @@ function renderGraphCanvas() {
   const cy = window.cytoscape({ container: canvas, elements, style: [
     { selector: 'node[strategy = "1"]', style: { 'background-color': ele => ({ add: '#238a68', modify: '#a8732c', split: '#a8732c', merge: '#a8732c', removed: '#873f47', 'changed-old': '#665036', unchanged: '#354b70', keep: '#354b70' }[ele.data('diffType')] || '#2f72c7'), 'label': 'data(label)', color: '#e8edf5', 'text-wrap': 'wrap', 'text-max-width': 160, 'font-size': 12, 'text-valign': 'center', 'text-halign': 'center', width: 164, height: 58, 'border-width': 2, 'border-color': ele => ele.data('status') === 'approved' ? '#2ec98c' : '#70839d' } },
     { selector: 'node[guide = "phase"]', style: { 'shape': 'roundrectangle', width: 'data(guideWidth)', height: 'data(guideHeight)', 'background-color': '#17202b', 'background-opacity': 0.5, 'border-color': '#344154', 'border-width': 1, label: 'data(label)', color: '#8fa1ba', 'font-size': 16, 'font-weight': 700, 'text-halign': 'left', 'text-valign': 'top', 'text-margin-x': 18, 'text-margin-y': 12, 'text-background-opacity': 0, 'events': 'no', 'z-index': -10 } },
-    { selector: 'node[guide = "lane"]', style: { 'shape': 'roundrectangle', width: 'data(guideWidth)', height: 'data(guideHeight)', 'background-color': '#1b2633', 'border-color': '#3a4a5f', 'border-width': 1, label: 'data(label)', color: '#b3c1d5', 'font-size': 13, 'font-weight': 700, 'events': 'no', 'z-index': -5 } },
-    { selector: 'edge', style: { width: ele => ele.data('diffType') === 'match' ? 1 : 2, 'line-color': ele => ({ add: '#2ec98c', modify: '#e6aa55', split: '#e6aa55', merge: '#e6aa55', removed: '#ed6b6b', 'changed-old': '#9a7445', match: '#687589', unchanged: '#6c7890' }[ele.data('diffType')] || '#4d8df7'), 'target-arrow-color': ele => ele.data('diffType') === 'removed' ? '#ed6b6b' : '#718097', 'target-arrow-shape': ele => ele.data('diffType') === 'match' ? 'none' : 'triangle', 'curve-style': 'bezier', label: 'data(label)', color: '#aab7c9', 'font-size': 10, 'text-wrap': 'wrap', 'text-max-width': 220, 'text-background-color': '#101318', 'text-background-opacity': 0.9, 'text-background-padding': 3 } },
-    { selector: 'edge.flow-edge', style: { 'curve-style': 'taxi', 'taxi-direction': 'downward', 'taxi-turn': 44 } },
-    { selector: 'edge.back-edge', style: { 'curve-style': 'unbundled-bezier', 'line-style': 'dashed', 'control-point-distances': 100, 'control-point-weights': 0.5 } },
+    { selector: 'edge', style: { width: ele => ele.data('diffType') === 'match' ? 1 : 2, 'line-color': ele => ({ add: '#2ec98c', modify: '#e6aa55', split: '#e6aa55', merge: '#e6aa55', removed: '#ed6b6b', 'changed-old': '#9a7445', match: '#687589', unchanged: '#6c7890' }[ele.data('diffType')] || '#4d8df7'), 'target-arrow-color': ele => ele.data('diffType') === 'removed' ? '#ed6b6b' : '#718097', 'target-arrow-shape': ele => ele.data('diffType') === 'match' ? 'none' : 'triangle', 'curve-style': 'bezier', label: '', color: '#d7e0ee', 'font-size': 11, 'text-wrap': 'wrap', 'text-max-width': 260, 'text-background-color': '#101318', 'text-background-opacity': 0.94, 'text-background-padding': 4, opacity: 0.62 } },
+    { selector: 'edge.flow-edge', style: { 'curve-style': 'unbundled-bezier', 'control-point-distances': 'data(curveDistance)', 'control-point-weights': 'data(curveWeight)' } },
+    { selector: 'edge.back-edge', style: { 'line-style': 'dashed', 'control-point-distances': 'data(curveDistance)', 'control-point-weights': 'data(curveWeight)' } },
     { selector: 'edge.match-edge', style: { 'line-style': 'dashed', 'curve-style': 'straight', opacity: 0.75 } },
     { selector: 'edge[conditionKind = "missing_branch_condition"]', style: { 'line-color': '#ed6b6b', 'target-arrow-color': '#ed6b6b', color: '#ff8a8a', width: 4 } },
     { selector: 'edge[conditionKind = "review_required_condition"]', style: { 'line-color': '#ed6b6b', 'target-arrow-color': '#ed6b6b', color: '#ff8a8a', width: 4 } },
     { selector: 'edge[conditionKind = "conflicting_branch_condition"]', style: { 'line-color': '#ed6b6b', 'target-arrow-color': '#ed6b6b', color: '#ff8a8a', width: 4 } },
     { selector: 'edge.self-loop', style: { 'curve-style': 'unbundled-bezier', 'loop-direction': '-45deg', 'loop-sweep': '-90deg', 'control-point-distances': 60 } },
+    { selector: '.context-muted', style: { opacity: 0.1, 'text-opacity': 0.08 } },
+    { selector: 'node.context-muted', style: { opacity: 0.18, 'text-opacity': 0.18 } },
+    { selector: 'edge.focus-edge, edge.hover-edge', style: { label: 'data(label)', opacity: 1, 'text-opacity': 1, width: 4, 'z-index': 20 } },
+    { selector: 'node.focus-node', style: { opacity: 1, 'text-opacity': 1, 'border-color': '#e6aa55', 'border-width': 4, 'z-index': 21 } },
     { selector: ':selected', style: { 'border-color': '#e6aa55', 'border-width': 4, 'line-color': '#e6aa55', 'target-arrow-color': '#e6aa55' } }
   ], layout });
   if (flow) {
@@ -1016,8 +1150,61 @@ function renderGraphCanvas() {
     cy.zoom(readableZoom);
     cy.pan({ x: canvas.clientWidth / 2 - flow.focusX * readableZoom, y: 26 });
   }
-  cy.on('tap', '[strategy = "1"]', event => graphDetail(event.target.data('item'), model));
-  cy.on('tap', event => { if (event.target === cy) graphDetail(null, model); });
+  const clearGraphFocus = () => {
+    cy.elements('[strategy = "1"]').removeClass('context-muted focus-edge focus-node');
+  };
+  const focusGraphItem = item => {
+    clearGraphFocus();
+    const strategyElements = cy.elements('[strategy = "1"]');
+    strategyElements.addClass('context-muted');
+    if (item.isNode()) {
+      const relatedEdges = item.connectedEdges('[strategy = "1"]');
+      item.removeClass('context-muted').addClass('focus-node');
+      relatedEdges.removeClass('context-muted').addClass('focus-edge');
+      relatedEdges.connectedNodes('[strategy = "1"]').removeClass('context-muted');
+    } else {
+      item.removeClass('context-muted').addClass('focus-edge');
+      item.connectedNodes('[strategy = "1"]').removeClass('context-muted').addClass('focus-node');
+    }
+  };
+  cy.on('tap', '[strategy = "1"]', event => {
+    focusGraphItem(event.target);
+    graphDetail(event.target.data('item'), model);
+  });
+  cy.on('mouseover', 'edge[strategy = "1"]', event => event.target.addClass('hover-edge'));
+  cy.on('mouseout', 'edge[strategy = "1"]', event => event.target.removeClass('hover-edge'));
+  let positionSaveQueue = Promise.resolve();
+  cy.on('dragfree', 'node[strategy = "1"]', event => {
+    if (!flow || !model.graph || !state.graphLayoutProfile) return;
+    const node = event.target;
+    const displayId = node.id();
+    const nodeId = graphItemLayoutId(node.data('item'));
+    const position = { x: node.position('x'), y: node.position('y') };
+    const previous = { ...(flow.positions.get(displayId) || position) };
+    const graphId = model.graph.object_id;
+    const taskId = currentTaskId();
+    const graphHash = state.graphLayoutProfile.materialized_graph_hash;
+    positionSaveQueue = positionSaveQueue.then(async () => {
+      const result = await post('/graph-layout', {
+        task_id: taskId, graph_id: graphId, materialized_graph_hash: graphHash,
+        position_updates: [{ node_id: nodeId, ...position }],
+        editor: document.getElementById('graph-reviewer')?.value.trim() || 'admin',
+      });
+      if (result.error) {
+        if (canvas.__cy === cy && state.graphCandidateId === graphId) node.position(previous);
+        return log(`节点位置自动保存失败：${errorText(result)}`, 'error');
+      }
+      flow.positions.set(displayId, position);
+      if (state.graphCandidateId === graphId) state.graphLayoutProfile = result;
+      log('节点位置已自动保存', 'ok');
+    });
+  });
+  cy.on('tap', event => {
+    if (event.target === cy) {
+      clearGraphFocus();
+      graphDetail(null, model);
+    }
+  });
   document.getElementById('graph-fit')?.addEventListener('click', () => cy.fit(undefined, 30));
   document.getElementById('graph-zoom-in')?.addEventListener('click', () => cy.zoom({ level: cy.zoom() * 1.2, renderedPosition: { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 } }));
   document.getElementById('graph-zoom-out')?.addEventListener('click', () => cy.zoom({ level: cy.zoom() / 1.2, renderedPosition: { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 } }));
@@ -1047,15 +1234,13 @@ function renderKnowledge() {
     ? `<div class="notice notice-red">有 ${rejectedChanges.length} 项模型变更未通过服务端校验，当前候选不可批准：${esc(rejectedChanges.map(item => `${item.entity_type || 'change'}:${item.reason || 'rejected'}`).join('；'))}</div>`
     : '';
   const conditionIssues = materialized.conditionIssues || [];
-  const conditionNotice = conditionIssues.length
-    ? `<div class="notice notice-red">有 ${conditionIssues.length} 项路由条件问题（空白、待确认或同条件指向不同目标）；已阻断整图批准与 Prompt 编译。请点击对应边人工校准。</div>`
-    : '';
+  const conditionNotice = renderConditionIssueNotice(conditionIssues, materialized);
   const layoutStatus = state.graphLayoutProfile?.status || 'missing';
   const layoutStatusLabel = ({ ready: '流程布局已缓存', partial: '流程布局部分可用', stale: '流程布局待更新', failed: '流程布局分析失败', running: '流程布局分析中', missing: '流程布局待生成' })[layoutStatus] || layoutStatus;
   const layoutStatusTone = layoutStatus === 'ready' ? 'green' : layoutStatus === 'failed' ? 'red' : 'amber';
   return `${viewHeading('<button class="button" id="knowledge-refresh">刷新</button>')}
     <div class="panel graph-audit-panel"><div class="panel-title"><div><h3>一张 Graph，三种审查模式</h3><p class="muted">候选模式展示“完整基线 + 本次增量”物化结果；既有模式只展示输入基线；差异模式在同一结构上标色。</p></div>${graph ? badge(graph.status, graph.status === 'approved' ? 'green' : 'amber') : badge('无候选', 'red')}</div>
-      <div class="graph-toolbar"><label class="field graph-candidate-field"><span>候选版本</span><select class="select" id="graph-candidate">${candidateOptions}</select></label><label class="field"><span>画布模式</span><select class="select" id="graph-mode"><option value="candidate" ${state.graphMode === 'candidate' ? 'selected' : ''}>候选图（基线 + 增量）</option><option value="reference" ${state.graphMode === 'reference' ? 'selected' : ''} ${!model.baseline ? 'disabled' : ''}>既有基线</option><option value="diff" ${state.graphMode === 'diff' ? 'selected' : ''} ${!model.baseline ? 'disabled' : ''}>差异标色</option></select></label><label class="field"><span>精确基线${lockedBaseline ? '（候选已锁定）' : ''}</span><select class="select" id="graph-baseline" ${!state.baselines.length || lockedBaseline ? 'disabled' : ''}>${baselineOptions}</select></label><label class="field"><span>布局</span><select class="select" id="graph-layout-select"><option value="call_flow" ${state.graphLayout === 'call_flow' ? 'selected' : ''}>电话流程（七阶段）</option><option value="auto" ${state.graphLayout === 'auto' ? 'selected' : ''}>拓扑自动分层</option><option value="original" ${state.graphLayout === 'original' ? 'selected' : ''}>保留原始坐标</option><option value="grid" ${state.graphLayout === 'grid' ? 'selected' : ''}>网格</option></select></label><div class="graph-layout-status">${badge(layoutStatusLabel, layoutStatusTone)}<button class="button" id="graph-layout-analyze" ${graph && layoutStatus !== 'running' ? '' : 'disabled'}>${layoutStatus === 'failed' ? '重试布局分析' : '重新分析布局'}</button></div><div class="graph-toolbar-actions"><button class="button" id="graph-export" ${graph ? '' : 'disabled'}>导出当前 Graph JSON</button><button class="button" id="graph-fit">适配</button><button class="button" id="graph-zoom-out" title="缩小">−</button><button class="button" id="graph-zoom-in" title="放大">+</button></div></div>
+      <div class="graph-toolbar"><label class="field graph-candidate-field"><span>候选版本</span><select class="select" id="graph-candidate">${candidateOptions}</select></label><label class="field"><span>画布模式</span><select class="select" id="graph-mode"><option value="candidate" ${state.graphMode === 'candidate' ? 'selected' : ''}>候选图（基线 + 增量）</option><option value="reference" ${state.graphMode === 'reference' ? 'selected' : ''} ${!model.baseline ? 'disabled' : ''}>既有基线</option><option value="diff" ${state.graphMode === 'diff' ? 'selected' : ''} ${!model.baseline ? 'disabled' : ''}>差异标色</option></select></label><label class="field"><span>精确基线${lockedBaseline ? '（候选已锁定）' : ''}</span><select class="select" id="graph-baseline" ${!state.baselines.length || lockedBaseline ? 'disabled' : ''}>${baselineOptions}</select></label><label class="field"><span>布局</span><select class="select" id="graph-layout-select"><option value="call_flow" ${state.graphLayout === 'call_flow' ? 'selected' : ''}>电话流程（七阶段）</option><option value="auto" ${state.graphLayout === 'auto' ? 'selected' : ''}>拓扑自动分层</option><option value="original" ${state.graphLayout === 'original' ? 'selected' : ''}>保留原始坐标</option><option value="grid" ${state.graphLayout === 'grid' ? 'selected' : ''}>网格</option></select></label><div class="graph-layout-status">${badge(layoutStatusLabel, layoutStatusTone)}<button class="button" id="graph-layout-analyze" ${graph && layoutStatus !== 'running' ? '' : 'disabled'}>${layoutStatus === 'failed' ? '重试布局分析' : '重新分析布局'}</button></div><div class="graph-toolbar-actions"><button class="button" id="graph-layout-reset" ${graph ? '' : 'disabled'} title="清空拖动保存的坐标，按阶段与分支规则重新排版">重新初始化布局</button><button class="button" id="graph-export" ${graph ? '' : 'disabled'}>导出当前 Graph JSON</button><button class="button" id="graph-fit">适配</button><button class="button" id="graph-zoom-out" title="缩小">−</button><button class="button" id="graph-zoom-in" title="放大">+</button></div></div>
       <div class="graph-run-summary"><div><span>物化候选</span><strong>${materialized.nodes.length} 节点 · ${materialized.edges.length} 条边</strong></div><div><span>本次变更</span><strong>${model.candidateNodes.length} 节点 · ${model.candidateEdges.length} 条边</strong></div><div><span>基线身份</span><strong class="mono">${esc(model.baselineId || '未绑定')}</strong></div></div>
       <div class="graph-stage"><div id="graph-canvas" class="graph-canvas"><div class="empty">正在加载 Graph 结构...</div></div><aside id="graph-detail" class="graph-detail"><span class="muted">点击节点或边，核对结构证据、目标专家原话和回听时间</span></aside></div>
       <div class="graph-legend"><span><i class="legend-dot legend-baseline"></i>基线未变</span><span><i class="legend-dot legend-modified"></i>修改 / 拆分 / 合并</span><span><i class="legend-dot legend-added"></i>新增</span><span><i class="legend-dot legend-removed"></i>废弃</span></div>
@@ -1069,12 +1254,12 @@ function renderRelease() {
   const release = state.selectedRelease;
   const approvedGraph = state.knowledge.find(k => k.type === 'graph' && k.status === 'approved');
   const gateReady = ['G4', 'G5', 'published'].includes(currentGateLabel());
-  const canGenerateExecution = Boolean(approvedGraph && gateReady);
+  const canGenerateExecution = Boolean(approvedGraph && gateReady && state.config.api_key_configured);
   const canCompile = Boolean(approvedGraph && gateReady && state.config.api_key_configured);
   const compileBlock = !approvedGraph ? '先完成完整 Graph 的 G3 审核' : !gateReady ? `当前待办 ${currentGateLabel()}，尚未完成对象级 G3` : !state.config.api_key_configured ? '尚未配置可用 API Key' : '';
   return `${viewHeading('<button class="button" id="release-refresh">刷新</button>')}
     <div class="layout"><div>
-      <div class="panel"><div class="panel-title"><h3>编译控制</h3>${badge(canCompile ? '可编译' : '已阻断', canCompile ? 'green' : 'red')}</div><div class="actions"><button class="button" id="generate-execution" ${canGenerateExecution ? '' : 'disabled'}>生成电话执行 Prompt</button><button class="button" id="generate-strategy" ${canCompile ? '' : 'disabled'}>生成策略评价 Prompt</button><button class="button" id="generate-script" ${canCompile ? '' : 'disabled'}>生成话术评价 Prompt</button><button class="button button-primary" id="compile-prompts" ${canCompile ? '' : 'disabled'}>编译执行 + 评价 Prompt</button></div><p class="muted" style="margin-top:12px">${esc(compileBlock || '电话执行与评价 Prompt 读取同一已批准 Graph 和权威路由表。')}</p></div>
+      <div class="panel"><div class="panel-title"><h3>编译控制</h3>${badge(canCompile ? '可编译' : '已阻断', canCompile ? 'green' : 'red')}</div><div class="actions"><button class="button" id="generate-execution" ${canGenerateExecution ? '' : 'disabled'}>LLM 生成电话执行 Prompt</button><button class="button" id="generate-strategy" ${canCompile ? '' : 'disabled'}>生成策略评价 Prompt</button><button class="button" id="generate-script" ${canCompile ? '' : 'disabled'}>生成话术评价 Prompt</button><button class="button button-primary" id="compile-prompts" ${canCompile ? '' : 'disabled'}>编译执行 + 评价 Prompt</button></div><p class="muted" style="margin-top:12px">${esc(compileBlock || 'LLM 负责生成执行说明层；节点、话术、Trigger、停止条件与权威路由表由后端无损追加。')}</p></div>
       <div class="panel"><div class="panel-title"><h3>编译产物</h3>${badge(`${state.compilations.length} 个`, 'blue')}</div>${compilation ? `<dl class="detail-list"><div><dt>compile_id</dt><dd class="mono">${esc(compilation.compile_id)}</dd></div><div><dt>输入对象</dt><dd>${esc(compilation.manifest?.input_object_count || 0)}</dd></div><div><dt>评价 Prompt 哈希</dt><dd class="mono">${esc(short(compilation.manifest?.combined_prompt_sha256, 28))}</dd></div><div><dt>执行 Prompt 哈希</dt><dd class="mono">${esc(short(compilation.manifest?.execution_prompt_sha256, 28))}</dd></div><div><dt>路由表哈希</dt><dd class="mono">${esc(short(compilation.manifest?.route_table_sha256, 28))}</dd></div><div><dt>编译器</dt><dd>${esc(compilation.manifest?.compiler_version)}</dd></div></dl><h4>电话执行 Prompt</h4><div class="prompt-preview">${esc(compilation.execution_prompt || '旧编译记录没有电话执行 Prompt')}</div><h4 style="margin-top:12px">综合评价 Prompt</h4><div class="prompt-preview">${esc(compilation.combined_prompt || '从列表加载完整产物后显示')}</div>` : '<div class="empty">暂无编译产物</div>'}</div>
     </div><div>
       <div class="panel"><div class="panel-title"><h3>发布 Gate</h3>${badge(approvedGate('G5') ? 'G5 已通过' : `当前待办 ${currentGateLabel()}`, approvedGate('G5') ? 'green' : 'amber')}</div><div class="form-grid"><label class="field"><span>发布责任人</span><input class="input" id="release-owner" value="admin"></label><label class="field"><span>确认原因</span><input class="input" id="release-reason" value="Prompt 与哈希复核通过"></label></div><div class="actions" style="margin-top:12px"><button class="button" id="approve-g4" ${currentGateLabel() === 'G4' ? '' : 'disabled'}>通过 G4（适用时）</button><button class="button button-primary" id="approve-g5" ${currentGateLabel() === 'G5' ? '' : 'disabled'}>通过 G5</button></div></div>
@@ -1132,6 +1317,19 @@ function bindView() {
 
 function bindTasks() {
   document.getElementById('refresh-tasks').onclick = () => reloadAndRender('任务数据已刷新');
+  root.querySelectorAll('.delete-task').forEach(button => button.onclick = event => {
+    event.stopPropagation();
+    const taskId = button.dataset.taskId;
+    if (!confirm(`永久删除任务“${button.dataset.taskLabel}”及其全部 Graph、证据和分析记录？\n\n${taskId}`)) return;
+    runButton(button, '删除中...', async () => {
+      const result = await post('/tasks/delete', { task_id: taskId, confirm_task_id: taskId, actor: 'admin' });
+      if (result.error) return log(`任务删除失败：${errorText(result)}`, 'error');
+      if (state.currentTask?.task_id === taskId) state.currentTask = null;
+      state.selectedEvidence = null; state.selectedKnowledge = null; state.selectedEvidenceIds.clear();
+      state.graphCandidateId = null; state.graphLayoutProfile = null;
+      await reloadAndRender(`任务已删除：${taskId}`);
+    });
+  });
   document.getElementById('rerun-task').onclick = event => runButton(event.currentTarget, '新建中...', async () => {
     const result = await post('/tasks/rerun', { task_id: currentTaskId() });
     if (result.error) return log(`重跑任务创建失败：${errorText(result)}`, 'error');
@@ -1271,10 +1469,8 @@ async function loadGraphLayout(force = false) {
   if (state.graphCandidateId !== graphId) return;
   state.graphLayoutProfile = current;
   renderGraphCanvas();
-  const requestKey = `${currentTaskId()}:${graphId}:${current.materialized_graph_hash}`;
-  const shouldAnalyze = force || ['missing', 'stale', 'partial'].includes(current.status);
-  if (!shouldAnalyze || (!force && state.graphLayoutRequests.has(requestKey))) return;
-  state.graphLayoutRequests.add(requestKey);
+  // 布局分析可能调用外部模型；读取页面只消费已有缓存，由用户明确点击按钮才重跑。
+  if (!force) return;
   const analyzed = await post('/graph-layout/analyze', {
     task_id: currentTaskId(), graph_id: graphId,
     reviewer: document.getElementById('graph-reviewer')?.value.trim() || 'system',
@@ -1307,6 +1503,22 @@ function bindKnowledge() {
   const layout = document.getElementById('graph-layout-select'); if (layout) layout.onchange = event => { state.graphLayout = event.target.value; renderGraphCanvas(); if (state.graphLayout === 'call_flow') loadGraphLayout(); };
   const analyzeLayout = document.getElementById('graph-layout-analyze');
   if (analyzeLayout) analyzeLayout.onclick = event => runButton(event.currentTarget, '分析中...', () => loadGraphLayout(true));
+  const resetLayout = document.getElementById('graph-layout-reset');
+  if (resetLayout) resetLayout.onclick = event => runButton(event.currentTarget, '初始化中...', async () => {
+    if (!state.graphLayoutProfile) return log('布局仍在加载，请稍后再试', 'error');
+    if (!window.confirm('将清空所有拖动保存的节点坐标，并按当前阶段和分支方向重新排版。继续吗？')) return;
+    const result = await post('/graph-layout', {
+      task_id: currentTaskId(), graph_id: state.graphCandidateId,
+      materialized_graph_hash: state.graphLayoutProfile.materialized_graph_hash,
+      reset_positions: true,
+      editor: document.getElementById('graph-reviewer')?.value.trim() || 'admin',
+    });
+    if (result.error) return log(`布局初始化失败：${errorText(result)}`, 'error');
+    state.graphLayoutProfile = result;
+    state.graphLayout = 'call_flow';
+    renderGraphCanvas();
+    log('已清空人工坐标并重新初始化布局；未调用 LLM', 'ok');
+  });
   const exportButton = document.getElementById('graph-export');
   if (exportButton) exportButton.onclick = event => runButton(event.currentTarget, '导出中...', async () => {
     if (!state.graphCandidateId) return log('当前没有可导出的 Graph', 'error');
@@ -1320,6 +1532,22 @@ function bindKnowledge() {
   });
   renderGraphCanvas();
   loadGraphLayout();
+  document.querySelectorAll('.graph-condition-issue-edge').forEach(button => {
+    button.onclick = () => {
+      const edgeId = button.dataset.conditionEdgeId;
+      const cy = window.__activeGraph;
+      const edge = cy?.getElementById(edgeId);
+      if (edge?.length) {
+        edge.select();
+        edge.emit('tap');
+        cy.animate({ center: { eles: edge }, duration: 220 });
+      } else {
+        const currentModel = graphViewModel();
+        const displayed = graphElements(currentModel);
+        graphDetail(displayed.edges.find(item => item.id === edgeId), currentModel);
+      }
+    };
+  });
   const review = async decision => {
     if (!state.graphCandidateId) return log('当前没有可审核的候选 Graph', 'error');
     const result = await post('/graph-review', {

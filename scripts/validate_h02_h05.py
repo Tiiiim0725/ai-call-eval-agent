@@ -80,6 +80,10 @@ def main():
         assert set((graph["object_id"], edge["object_id"], trigger["object_id"])).issubset(prompt["input_objects"])
         compilation = app.compile_release(source["source_id"], task["task_id"])
         assert "error" not in compilation, compilation
+        compilation_detail = app.get_compilation(compilation["compile_id"])
+        assert trigger["object_id"] in compilation_detail["execution_prompt"]
+        assert "## LLM 编译的执行说明" in compilation_detail["execution_prompt"]
+        assert "# 权威执行附录｜不得省略或改写" in compilation_detail["execution_prompt"]
         app.gate_action("G5", task["task_id"], "release-owner", "approved", "published")
         release = app.create_release_package(compilation["compile_id"])
         assert "error" not in release, release

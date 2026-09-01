@@ -12,6 +12,7 @@ B 阶段：来源、解析与证据
 """
 import json
 import hashlib
+import math
 import os
 import re
 import sys
@@ -35,9 +36,9 @@ os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "db.json")
 INPUT_DIR = os.path.join(APP_ROOT, "..", "input-docs")
 EVIDENCE_PROMPT_VERSION = "v0.38-evidence-1"
-STRATEGY_PROMPT_VERSION = "v0.39-incremental-graph-1"
+STRATEGY_PROMPT_VERSION = "v0.51-incremental-evidence-salvage-1"
 SCRIPT_PROMPT_VERSION = "v0.38-script-1"
-ANALYSIS_SCHEMA_VERSION = "v0.39-2"
+ANALYSIS_SCHEMA_VERSION = "v0.51-1"
 VALID_EVIDENCE_KINDS = {"strategy", "script", "context", "meta"}
 GRAPH_CHANGE_TYPES = {"add", "modify", "deprecate", "split", "merge", "keep"}
 GRAPH_LAYOUT_PROMPT_VERSION = "v0.46-call-flow-layout-1"
@@ -248,6 +249,82 @@ def _expert_support_error(db, source, evidence_refs, context_refs=None):
     if support and all(_is_terse_endorsement(item.get("content")) for item in support) and not contexts:
         return {"error": "endorsement_context_required", "evidence_refs": refs}
     return None
+
+
+def _sanitize_llm_evidence_refs(db, source, evidence_refs, context_refs=None):
+    """Keep valid expert support from an LLM proposal and audit discarded refs."""
+    support_refs = normalize_evidence_refs(db, evidence_refs)
+    context_refs = normalize_evidence_refs(db, context_refs or [])
+    valid_support = []
+    valid_context = []
+    warnings = []
+
+    def append_once(items, value):
+        if value not in items:
+            items.append(value)
+
+    def belongs_to_source(item):
+        return bool(item) and item.get("source_id") == source.get("source_id")
+
+    known_wrong_support = False
+    for ref in support_refs:
+        item = _evidence_for(db, ref)
+        if not item:
+            warnings.append({"type": "unknown_support_evidence_ref", "ref": ref})
+        elif not belongs_to_source(item):
+            warnings.append({"type": "foreign_support_evidence_ref", "ref": ref})
+        elif _is_target_expert_evidence(source, item):
+            append_once(valid_support, ref)
+        else:
+            known_wrong_support = True
+            append_once(valid_context, ref)
+            warnings.append({"type": "non_target_support_moved_to_context", "ref": ref})
+
+    for ref in context_refs:
+        item = _evidence_for(db, ref)
+        if not item:
+            warnings.append({"type": "unknown_context_evidence_ref", "ref": ref})
+        elif not belongs_to_source(item):
+            warnings.append({"type": "foreign_context_evidence_ref", "ref": ref})
+        else:
+            append_once(valid_context, ref)
+
+    error = None
+    if not support_refs:
+        error = {"error": "missing_evidence"}
+    elif not valid_support:
+        error = {
+            "error": "target_expert_evidence_required" if known_wrong_support else "unknown_evidence_ref",
+            "evidence_refs": support_refs,
+        }
+    else:
+        support = [_evidence_for(db, ref) for ref in valid_support]
+        if all(_is_terse_endorsement(item.get("content")) for item in support) and not valid_context:
+            error = {"error": "endorsement_context_required", "evidence_refs": valid_support}
+
+    return {
+        "evidence_refs": valid_support,
+        "context_refs": valid_context,
+        "warnings": warnings,
+        "error": error,
+    }
+
+
+def _sanitize_llm_script_evidence_refs(db, source, evidence_refs):
+    """Script evidence is optional, but every retained quote must be the target expert's."""
+    valid = []
+    warnings = []
+    for ref in normalize_evidence_refs(db, evidence_refs):
+        item = _evidence_for(db, ref)
+        if not item:
+            warnings.append({"type": "unknown_script_evidence_ref", "ref": ref})
+        elif item.get("source_id") != source.get("source_id"):
+            warnings.append({"type": "foreign_script_evidence_ref", "ref": ref})
+        elif not _is_target_expert_evidence(source, item):
+            warnings.append({"type": "non_target_script_evidence_ref", "ref": ref})
+        elif ref not in valid:
+            valid.append(ref)
+    return valid, warnings
 
 
 def _valid_baseline_condition_correction(db, task_id, linkage):
@@ -524,6 +601,136 @@ def rerun_task(task_id: str) -> dict:
     result.update(task=new_task, source=new_source, baselines=copied_baselines,
                   parse=parse_source(new_source["source_id"]))
     return result
+
+
+def delete_task(task_id: str, confirm_task_id: str, actor="admin") -> dict:
+    """Permanently remove one task and every object owned by it."""
+    db = _load_db()
+    task = next((item for item in db.get("tasks", []) if item.get("task_id") == task_id), None)
+    if not task:
+        return {"error": "task_not_found"}
+    if not task_id or confirm_task_id != task_id:
+        return {"error": "task_delete_confirmation_mismatch"}
+
+    source_ids = {
+        source_id for source_id, source in db.get("sources", {}).items()
+        if source.get("task_id") == task_id
+    }
+    if task.get("source_id"):
+        source_ids.add(task["source_id"])
+    session_ids = {
+        session_id for session_id, session in db.get("sessions", {}).items()
+        if session.get("task_id") == task_id or session.get("source_id") in source_ids
+    }
+    utterance_ids = {
+        item.get("utterance_id") for item in db.get("utterances", [])
+        if item.get("task_id") == task_id or item.get("source_id") in source_ids
+    }
+    evidence_ids = {
+        item.get("evidence_id") for item in db.get("evidence", [])
+        if item.get("task_id") == task_id or item.get("source_id") in source_ids
+    }
+    knowledge_ids = {
+        object_id for object_id, item in db.get("knowledge", {}).items()
+        if item.get("task_id") == task_id or item.get("source_id") in source_ids
+    }
+    baseline_ids = {
+        item.get("baseline_id") for item in db.get("graph_baselines", [])
+        if item.get("task_id") == task_id or item.get("source_id") in source_ids
+    }
+    run_ids = {
+        item.get("run_id") for item in db.get("analysis_runs", [])
+        if item.get("task_id") == task_id or item.get("source_id") in source_ids
+    }
+    candidate_ids = {
+        item.get("candidate_id") for item in db.get("script_document_candidates", [])
+        if item.get("task_id") == task_id or item.get("source_id") in source_ids
+    }
+    layout_ids = {
+        item.get("layout_id") for item in db.get("graph_layout_profiles", [])
+        if item.get("task_id") == task_id or item.get("graph_id") in knowledge_ids
+    }
+    compile_ids = {
+        item.get("compile_id") for item in db.get("compilations", [])
+        if (item.get("manifest") or {}).get("task_id") == task_id
+        or (item.get("manifest") or {}).get("source_id") in source_ids
+    }
+    release_ids = {
+        item.get("release_id") for item in db.get("releases", [])
+        if item.get("compile_id") in compile_ids
+    }
+    delivery_ids = {
+        item.get("delivery_id") for item in db.get("deliveries", [])
+        if item.get("release_id") in release_ids
+    }
+    removed_ids = {
+        task_id, *source_ids, *session_ids, *utterance_ids, *evidence_ids,
+        *knowledge_ids, *baseline_ids, *run_ids, *candidate_ids, *layout_ids,
+        *compile_ids, *release_ids, *delivery_ids,
+    }
+
+    counts = {}
+
+    def filter_list(key, predicate):
+        before = list(db.get(key, []))
+        db[key] = [item for item in before if not predicate(item)]
+        counts[key] = len(before) - len(db[key])
+
+    db["tasks"] = [item for item in db.get("tasks", []) if item.get("task_id") != task_id]
+    counts["tasks"] = 1
+    before_sources = len(db.get("sources", {}))
+    db["sources"] = {
+        key: item for key, item in db.get("sources", {}).items() if key not in source_ids
+    }
+    counts["sources"] = before_sources - len(db["sources"])
+    before_sessions = len(db.get("sessions", {}))
+    db["sessions"] = {
+        key: item for key, item in db.get("sessions", {}).items() if key not in session_ids
+    }
+    counts["sessions"] = before_sessions - len(db["sessions"])
+    before_knowledge = len(db.get("knowledge", {}))
+    db["knowledge"] = {
+        key: item for key, item in db.get("knowledge", {}).items() if key not in knowledge_ids
+    }
+    counts["knowledge"] = before_knowledge - len(db["knowledge"])
+
+    filter_list("utterances", lambda item: item.get("utterance_id") in utterance_ids)
+    filter_list("evidence", lambda item: item.get("evidence_id") in evidence_ids)
+    filter_list("gates", lambda item: item.get("task_id") == task_id)
+    filter_list("analysis_runs", lambda item: item.get("run_id") in run_ids)
+    filter_list("graph_baselines", lambda item: item.get("baseline_id") in baseline_ids)
+    filter_list("graph_match_confirmations", lambda item: item.get("task_id") == task_id)
+    filter_list("script_document_candidates", lambda item: item.get("candidate_id") in candidate_ids)
+    filter_list("graph_layout_profiles", lambda item: item.get("layout_id") in layout_ids)
+    filter_list("compilations", lambda item: item.get("compile_id") in compile_ids)
+    filter_list("releases", lambda item: item.get("release_id") in release_ids)
+    filter_list("deliveries", lambda item: item.get("delivery_id") in delivery_ids)
+    filter_list("changes", lambda item: (
+        item.get("task_id") == task_id or item.get("source_id") in source_ids
+        or any(value in removed_ids for value in item.values() if isinstance(value, str))
+    ))
+    filter_list("access_audit", lambda item: item.get("object_id") in removed_ids)
+
+    for remaining in db.get("tasks", []):
+        if remaining.get("rerun_of_task_id") == task_id:
+            remaining.pop("rerun_of_task_id", None)
+            remaining["rerun_origin_deleted"] = True
+    for remaining in db.get("sources", {}).values():
+        if remaining.get("rerun_of_task_id") == task_id:
+            remaining.pop("rerun_of_task_id", None)
+            remaining["rerun_origin_deleted"] = True
+        if remaining.get("origin_source_id") in source_ids:
+            remaining.pop("origin_source_id", None)
+
+    db.setdefault("access_audit", []).append({
+        "audit_id": _new_id("aud"), "actor": actor, "role": "operator",
+        "scope": "task_cleanup", "object_id": task_id, "action": "delete_task",
+        "data_level": "D2", "result": "deleted",
+        "reason": json.dumps(counts, ensure_ascii=False, sort_keys=True),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "immutable": True,
+    })
+    _save_db(db)
+    return {"deleted": True, "task_id": task_id, "filename": task.get("filename"), "counts": counts}
 
 
 def parse_meta(text: str) -> dict:
@@ -945,22 +1152,18 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
         if contract_error:
             rejected_nodes.append({"node": node, "reason": contract_error})
             continue
-        ev_refs = normalize_evidence_refs(db, node.get("evidence_refs", []))
-        node_context_refs = node.get("context_refs", [])
-        attribution_error = _expert_support_error(db, source, ev_refs, node_context_refs)
-        if attribution_error:
-            rejected_nodes.append({"node": node, "reason": attribution_error["error"]})
+        evidence_result = _sanitize_llm_evidence_refs(
+            db, source, node.get("evidence_refs", []), node.get("context_refs", [])
+        )
+        if evidence_result["error"]:
+            rejected_nodes.append({"node": node, "reason": evidence_result["error"]["error"]})
             continue
-        script_evidence_refs = normalize_evidence_refs(db, node.get("script_evidence_refs", []))
-        script_error = None
-        if script_evidence_refs:
-            unknown_script_refs = validate_evidence_refs(db, script_evidence_refs)
-            script_items = [_evidence_for(db, ref) for ref in script_evidence_refs]
-            if unknown_script_refs or any(not _is_target_expert_evidence(source, item or {}) for item in script_items):
-                script_error = "invalid_script_evidence_ref"
-        if script_error:
-            rejected_nodes.append({"node": node, "reason": script_error})
-            continue
+        ev_refs = evidence_result["evidence_refs"]
+        node_context_refs = evidence_result["context_refs"]
+        script_evidence_refs, script_warnings = _sanitize_llm_script_evidence_refs(
+            db, source, node.get("script_evidence_refs", [])
+        )
+        evidence_ref_warnings = evidence_result["warnings"] + script_warnings
         node_name = str(node.get("node_name") or "").strip()
         if not node_name and baseline_refs:
             node_name = str(baseline_indexes["nodes"]["by_id"][baseline_refs[0]].get("label") or baseline_refs[0])
@@ -983,8 +1186,9 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
                 "baseline_match": baseline_refs[0] if len(baseline_refs) == 1 else None,
                 "change_reason": node.get("reason", ""),
                 "script_evidence_refs": script_evidence_refs,
-                "context_refs": normalize_evidence_refs(db, node_context_refs),
+                "context_refs": node_context_refs,
                 "evidence_mode": "endorsement" if node_context_refs else "direct",
+                "evidence_ref_warnings": evidence_ref_warnings,
             },
             analysis_run_id=run_id,
         )
@@ -999,6 +1203,7 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
             "script_evidence_refs": script_evidence_refs,
             "is_fragment": node.get("is_fragment", True),
             "evidence_refs": ev_refs,
+            "evidence_ref_warnings": evidence_ref_warnings,
         })
 
     node_ids = {}
@@ -1028,12 +1233,14 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
         if not from_id or not to_id:
             rejected_edges.append({"edge": edge, "reason": "invalid_endpoint_ref", "from_ref": from_ref, "to_ref": to_ref})
             continue
-        ev_refs = normalize_evidence_refs(db, edge.get("evidence_refs", []))
-        edge_context_refs = edge.get("context_refs", [])
-        attribution_error = _expert_support_error(db, source, ev_refs, edge_context_refs)
-        if attribution_error:
-            rejected_edges.append({"edge": edge, "reason": attribution_error["error"]})
+        evidence_result = _sanitize_llm_evidence_refs(
+            db, source, edge.get("evidence_refs", []), edge.get("context_refs", [])
+        )
+        if evidence_result["error"]:
+            rejected_edges.append({"edge": edge, "reason": evidence_result["error"]["error"]})
             continue
+        ev_refs = evidence_result["evidence_refs"]
+        edge_context_refs = evidence_result["context_refs"]
         edge_obj = create_knowledge_object(
             task_id=task_id, source_id=source_id, obj_type="strategy_edge",
             content=edge.get("condition", ""), evidence_refs=ev_refs, scope="general",
@@ -1054,8 +1261,9 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
                 "condition_review_status": "needs_review" if edge.get("condition_uncertainty") else "unreviewed",
                 "condition_uncertainty": edge.get("condition_uncertainty", ""),
                 "change_reason": edge.get("reason", ""),
-                "context_refs": normalize_evidence_refs(db, edge_context_refs),
+                "context_refs": edge_context_refs,
                 "evidence_mode": "endorsement" if edge_context_refs else "direct",
+                "evidence_ref_warnings": evidence_result["warnings"],
             },
             analysis_run_id=run_id,
         )
@@ -1085,13 +1293,14 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
         if target_ref and not target_id:
             rejected_triggers.append({"trigger": trigger, "reason": "invalid_endpoint_ref", "target_ref": target_ref})
             continue
-        ev_refs = [] if isinstance(trigger, str) else trigger.get("evidence_refs", [])
-        ev_refs = normalize_evidence_refs(db, ev_refs)
-        trigger_context_refs = trigger.get("context_refs", [])
-        attribution_error = _expert_support_error(db, source, ev_refs, trigger_context_refs)
-        if attribution_error:
-            rejected_triggers.append({"trigger": trigger, "reason": attribution_error["error"]})
+        evidence_result = _sanitize_llm_evidence_refs(
+            db, source, trigger.get("evidence_refs", []), trigger.get("context_refs", [])
+        )
+        if evidence_result["error"]:
+            rejected_triggers.append({"trigger": trigger, "reason": evidence_result["error"]["error"]})
             continue
+        ev_refs = evidence_result["evidence_refs"]
+        trigger_context_refs = evidence_result["context_refs"]
         trigger_obj = create_knowledge_object(
             task_id=task_id, source_id=source_id, obj_type="strategy_trigger",
             content=trigger_text, evidence_refs=ev_refs, scope="general",
@@ -1107,8 +1316,9 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
                 "target_node_id": target_id,
                 "condition": trigger_text,
                 "change_reason": trigger.get("reason", ""),
-                "context_refs": normalize_evidence_refs(db, trigger_context_refs),
+                "context_refs": trigger_context_refs,
                 "evidence_mode": "endorsement" if trigger_context_refs else "direct",
+                "evidence_ref_warnings": evidence_result["warnings"],
             },
             analysis_run_id=run_id,
         )
@@ -1120,6 +1330,13 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
     graph_refs = [ref for item in nodes_created for ref in item.get("evidence_refs", [])]
     graph_refs += [ref for item in edges_created for ref in item.get("evidence_refs", [])]
     graph_refs += [ref for item in triggers_created for ref in item.get("evidence_refs", [])]
+    evidence_ref_warnings = [
+        warning
+        for item in nodes_created + edges_created + triggers_created
+        for warning in item.get("linkage", {}).get(
+            "evidence_ref_warnings", item.get("evidence_ref_warnings", [])
+        )
+    ]
     rejected_changes = []
     for entity_type, rejected in (
             ("node", rejected_nodes), ("edge", rejected_edges), ("trigger", rejected_triggers)):
@@ -1152,6 +1369,7 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
             "candidate_states": states_created,
             "uncertainties": structure.get("uncertainties", []),
             "rejected_changes": rejected_changes,
+            "evidence_ref_warnings": evidence_ref_warnings,
         },
         analysis_run_id=run_id,
     )
@@ -1175,6 +1393,7 @@ def llm_extract_strategy(source_id, max_utts=20, include_all=False):
         "deduplicated": False,
         "requested_max_utts": requested_max_utts,
         "effective_max_utts": max_utts,
+        "evidence_ref_warnings": evidence_ref_warnings,
     }
     _finish_analysis_run(run_id, response)
     return response
@@ -2832,9 +3051,9 @@ def validate_knowledge_linkage(db, obj_type, linkage, task_id=None):
         if not linkage.get("from_node_id") or not linkage.get("to_node_id") or not linkage.get("condition"):
             return {"error": "missing_edge_relation", "message": "strategy_edge requires from/to node and condition"}
         for node_id in (linkage.get("from_node_id"), linkage.get("to_node_id")):
-            node = db.get("knowledge", {}).get(node_id)
-            if not node and str(node_id) in baseline_node_ids:
+            if str(node_id) in baseline_node_ids:
                 continue
+            node = db.get("knowledge", {}).get(node_id)
             if not node or node.get("type") != "strategy_node":
                 return {"error": "invalid_edge_node", "object_id": node_id}
             if linkage.get("group_id") and node.get("linkage", {}).get("group_id") != linkage.get("group_id"):
@@ -2842,11 +3061,12 @@ def validate_knowledge_linkage(db, obj_type, linkage, task_id=None):
     if obj_type == "strategy_trigger":
         if not linkage.get("condition") or not linkage.get("target_node_id"):
             return {"error": "missing_trigger_relation", "message": "strategy_trigger requires condition and target node"}
-        node = db.get("knowledge", {}).get(linkage.get("target_node_id"))
-        if not node and str(linkage.get("target_node_id")) in baseline_node_ids:
+        if str(linkage.get("target_node_id")) in baseline_node_ids:
             node = None
-        elif not node or node.get("type") != "strategy_node":
-            return {"error": "invalid_trigger_node", "object_id": linkage.get("target_node_id")}
+        else:
+            node = db.get("knowledge", {}).get(linkage.get("target_node_id"))
+            if not node or node.get("type") != "strategy_node":
+                return {"error": "invalid_trigger_node", "object_id": linkage.get("target_node_id")}
         if node and linkage.get("group_id") and node.get("linkage", {}).get("group_id") != linkage.get("group_id"):
             return {"error": "cross_group_trigger"}
     if obj_type in ("script", "script_fragment") and not linkage.get("node_id"):
@@ -3316,7 +3536,7 @@ def parse_graph_import_bundle(content, filename=""):
             )
             if layout_profile:
                 layout_profile = {
-                    "format": "ai-call-graph-layout", "version": 1,
+                    "format": "ai-call-graph-layout", "version": 2,
                     "phases": GRAPH_LAYOUT_PHASES, **layout_profile,
                 }
                 layout_profile["layout_sha256"] = _stable_fingerprint(layout_profile)
@@ -3384,6 +3604,7 @@ def create_graph_baseline(task_id, source_id, name, document, origin="manual", s
                 "auto_edges": portable["auto_edges"],
                 "manual_nodes": portable["manual_nodes"],
                 "manual_edges": portable["manual_edges"],
+                "manual_positions": portable["manual_positions"],
                 "analysis": {"origin": "portable_import", "prompt_version": None},
                 "created_at": now, "updated_at": now,
             }
@@ -3508,11 +3729,12 @@ def _layout_profile_for(db, task_id, graph_id=None, baseline_id=None):
 
 def _layout_profile_hash(profile):
     return _stable_fingerprint({
-        "schema_version": 1, "phases": GRAPH_LAYOUT_PHASES,
+        "schema_version": 2, "phases": GRAPH_LAYOUT_PHASES,
         "auto_nodes": profile.get("auto_nodes") or {},
         "auto_edges": profile.get("auto_edges") or {},
         "manual_nodes": profile.get("manual_nodes") or {},
         "manual_edges": profile.get("manual_edges") or {},
+        "manual_positions": profile.get("manual_positions") or {},
     })
 
 
@@ -3531,6 +3753,10 @@ def _layout_response(context, profile=None):
     auto_edges = profile.get("auto_edges") or {}
     manual_nodes = profile.get("manual_nodes") or {}
     manual_edges = profile.get("manual_edges") or {}
+    manual_positions = {
+        node_id: value for node_id, value in (profile.get("manual_positions") or {}).items()
+        if node_id in context["node_ids"]
+    }
     node_annotations = {}
     for node_id in sorted(context["node_ids"]):
         automatic = auto_nodes.get(node_id) or {}
@@ -3562,6 +3788,7 @@ def _layout_response(context, profile=None):
         "node_annotations": node_annotations, "edge_annotations": edge_annotations,
         "auto_nodes": auto_nodes, "auto_edges": auto_edges,
         "manual_nodes": manual_nodes, "manual_edges": manual_edges,
+        "manual_positions": manual_positions,
         "analysis": profile.get("analysis") or {}, "last_error": profile.get("last_error"),
     }
     response["layout_sha256"] = _layout_profile_hash(response)
@@ -3608,6 +3835,7 @@ def _persist_layout_analysis(context, profile):
     if current:
         profile["manual_nodes"] = dict(current.get("manual_nodes") or {})
         profile["manual_edges"] = dict(current.get("manual_edges") or {})
+        profile["manual_positions"] = dict(current.get("manual_positions") or {})
     saved = _save_layout_profile(fresh_db, fresh_context, profile)
     _save_db(fresh_db)
     return fresh_context, saved, None
@@ -3635,6 +3863,7 @@ def analyze_graph_layout(task_id, graph_id, reviewer="system"):
         "status": "running", "auto_nodes": {}, "auto_edges": {},
         "manual_nodes": dict((seed or {}).get("manual_nodes") or {}),
         "manual_edges": dict((seed or {}).get("manual_edges") or {}),
+        "manual_positions": dict((seed or {}).get("manual_positions") or {}),
         "analysis": {"prompt_version": GRAPH_LAYOUT_PROMPT_VERSION, "started_at": now},
         "created_at": (previous or {}).get("created_at") or now, "updated_at": now,
     }
@@ -3726,14 +3955,16 @@ unknown 不得猜成 resistant。顺序衔接、信息不足、多入口或难�
 
 
 def save_graph_layout(task_id, graph_id, materialized_graph_hash, node_updates=None,
-                      edge_updates=None, editor="admin"):
+                      edge_updates=None, editor="admin", position_updates=None,
+                      reset_positions=False):
     db = _load_db()
     context, error = _graph_layout_context(db, task_id, graph_id)
     if error:
         return error
     if materialized_graph_hash != context["materialized_graph_hash"]:
         return {"error": "layout_stale", "materialized_graph_hash": context["materialized_graph_hash"]}
-    if not isinstance(node_updates or [], list) or not isinstance(edge_updates or [], list):
+    if (not isinstance(node_updates or [], list) or not isinstance(edge_updates or [], list)
+            or not isinstance(position_updates or [], list) or not isinstance(reset_positions, bool)):
         return {"error": "invalid_layout_updates"}
     profile = _layout_profile_for(db, task_id, graph_id=graph_id)
     seed = profile
@@ -3749,6 +3980,7 @@ def save_graph_layout(task_id, graph_id, materialized_graph_hash, node_updates=N
             "auto_edges": dict((seed or {}).get("auto_edges") or {}),
             "manual_nodes": dict((seed or {}).get("manual_nodes") or {}),
             "manual_edges": dict((seed or {}).get("manual_edges") or {}),
+            "manual_positions": dict((seed or {}).get("manual_positions") or {}),
             "analysis": dict((seed or {}).get("analysis") or {}), "created_at": now,
         }
         db.setdefault("graph_layout_profiles", []).append(profile)
@@ -3776,6 +4008,19 @@ def save_graph_layout(task_id, graph_id, materialized_graph_hash, node_updates=N
         if tendency not in GRAPH_LAYOUT_TENDENCIES:
             return {"error": "invalid_layout_annotation", "edge_id": edge_id}
         profile.setdefault("manual_edges", {})[edge_id] = {"route_tendency": tendency}
+    if reset_positions:
+        profile["manual_positions"] = {}
+    for update in position_updates or []:
+        node_id = str(update.get("node_id") or "")
+        if node_id not in context["node_ids"]:
+            return {"error": "graph_node_not_found", "node_id": node_id}
+        try:
+            x, y = float(update.get("x")), float(update.get("y"))
+        except (TypeError, ValueError):
+            return {"error": "invalid_layout_position", "node_id": node_id}
+        if not math.isfinite(x) or not math.isfinite(y) or abs(x) > 1000000 or abs(y) > 1000000:
+            return {"error": "invalid_layout_position", "node_id": node_id}
+        profile.setdefault("manual_positions", {})[node_id] = {"x": round(x, 2), "y": round(y, 2)}
     profile.update({
         "materialized_graph_hash": context["materialized_graph_hash"],
         "updated_at": now, "updated_by": str(editor or "admin"),
@@ -3793,13 +4038,14 @@ def save_graph_layout(task_id, graph_id, materialized_graph_hash, node_updates=N
 
 def _portable_layout_profile(layout, node_ids, edge_ids):
     portable = {
-        "format": "ai-call-graph-layout", "version": 1,
+        "format": "ai-call-graph-layout", "version": 2,
         "status": layout.get("status") if layout.get("status") in ("ready", "partial") else "partial",
         "phases": GRAPH_LAYOUT_PHASES,
         "auto_nodes": {key: value for key, value in (layout.get("auto_nodes") or {}).items() if key in node_ids},
         "auto_edges": {key: value for key, value in (layout.get("auto_edges") or {}).items() if key in edge_ids},
         "manual_nodes": {key: value for key, value in (layout.get("manual_nodes") or {}).items() if key in node_ids},
         "manual_edges": {key: value for key, value in (layout.get("manual_edges") or {}).items() if key in edge_ids},
+        "manual_positions": {key: value for key, value in (layout.get("manual_positions") or {}).items() if key in node_ids},
     }
     portable["layout_sha256"] = _stable_fingerprint(portable)
     return portable
@@ -3810,10 +4056,13 @@ def _normalize_portable_layout(layout, node_ids, edge_ids):
         return None, [{"type": "invalid_layout_profile"}]
     warnings = []
     supplied_hash = layout.get("layout_sha256")
-    payload = {key: layout.get(key) for key in ("format", "version", "status", "phases", "auto_nodes", "auto_edges", "manual_nodes", "manual_edges")}
+    hash_fields = ["format", "version", "status", "phases", "auto_nodes", "auto_edges", "manual_nodes", "manual_edges"]
+    if int(layout.get("version") or 1) >= 2:
+        hash_fields.append("manual_positions")
+    payload = {key: layout.get(key) for key in hash_fields}
     if supplied_hash and supplied_hash != _stable_fingerprint(payload):
         return None, [{"type": "layout_hash_mismatch"}]
-    result = {"status": layout.get("status") if layout.get("status") in ("ready", "partial") else "partial", "auto_nodes": {}, "auto_edges": {}, "manual_nodes": {}, "manual_edges": {}}
+    result = {"status": layout.get("status") if layout.get("status") in ("ready", "partial") else "partial", "auto_nodes": {}, "auto_edges": {}, "manual_nodes": {}, "manual_edges": {}, "manual_positions": {}}
     for bucket in ("auto_nodes", "manual_nodes"):
         values = layout.get(bucket) or {}
         if not isinstance(values, dict):
@@ -3837,6 +4086,20 @@ def _normalize_portable_layout(layout, node_ids, edge_ids):
                 warnings.append({"type": "invalid_edge_assignment", "edge_id": edge_id})
                 continue
             result[bucket][edge_id] = {"route_tendency": tendency}
+    positions = layout.get("manual_positions") or {}
+    if not isinstance(positions, dict):
+        warnings.append({"type": "invalid_layout_bucket", "bucket": "manual_positions"})
+    else:
+        for node_id, value in positions.items():
+            try:
+                x, y = float((value or {}).get("x")), float((value or {}).get("y"))
+            except (AttributeError, TypeError, ValueError):
+                warnings.append({"type": "invalid_node_position", "node_id": node_id})
+                continue
+            if node_id not in node_ids or not math.isfinite(x) or not math.isfinite(y) or abs(x) > 1000000 or abs(y) > 1000000:
+                warnings.append({"type": "invalid_node_position", "node_id": node_id})
+                continue
+            result["manual_positions"][node_id] = {"x": round(x, 2), "y": round(y, 2)}
     return result, warnings
 
 
@@ -4510,12 +4773,38 @@ def _execution_node_text(materialized_graph):
     return "\n".join(lines)
 
 
+def _execution_trigger_text(materialized_graph):
+    nodes = {str(node.get("id")): str(node.get("label") or node.get("name") or node.get("id") or "")
+             for node in materialized_graph.get("nodes", [])}
+    lines = []
+    for trigger in sorted(materialized_graph.get("triggers", []), key=lambda item: str(item.get("id") or "")):
+        trigger_id = str(trigger.get("id") or "")
+        target = str(trigger.get("target_node_id") or trigger.get("target") or "")
+        condition = str(trigger.get("condition") or trigger.get("label") or "").strip()
+        lines.extend([
+            f"## Trigger [{trigger_id}]",
+            f"- 进入：[{target}] {nodes.get(target, target)}",
+            f"- 条件：{condition or '未提供；这表示未知，不得推导为否定条件。'}",
+        ])
+    if lines:
+        return "\n".join(lines)
+
+    incoming = {str(edge.get("target") or edge.get("to_node_id") or edge.get("to") or "")
+                for edge in materialized_graph.get("edges", [])}
+    entries = [node for node in materialized_graph.get("nodes", [])
+               if str(node.get("id") or "") not in incoming]
+    if not entries:
+        return "- 未提供显式 Trigger，且无法从拓扑确定入口；应结合电话上下文谨慎选择，不得发明新节点。"
+    return "\n".join(
+        f"- 拓扑入口候选：[{node.get('id')}] {node.get('label') or node.get('name') or node.get('id')}"
+        for node in sorted(entries, key=lambda item: str(item.get("id") or ""))
+    )
+
+
 def _execution_prompt_from_graph(materialized_graph, route_table):
     stops = materialized_graph.get("stop_conditions") or []
     stop_text = "\n".join(f"- {item}" for item in stops) or "- 未提供；这表示未知，不表示禁止或必须继续。"
-    return """# 电话执行 Prompt｜专家克隆策略
-
-你负责在真实电话对话中尽量忠实执行下方已批准的专家克隆 Graph。
+    return """# 权威执行附录｜不得省略或改写
 
 ## 路由解释原则
 - 路由条件是需要结合完整对话理解的语义线索，不是关键词白名单。
@@ -4531,6 +4820,9 @@ def _execution_prompt_from_graph(materialized_graph, route_table):
 ## 策略节点与专家话术
 {nodes}
 
+## 入口与触发器
+{triggers}
+
 ## 停止条件
 {stops}
 
@@ -4540,13 +4832,14 @@ def _execution_prompt_from_graph(materialized_graph, route_table):
         baseline_id=materialized_graph.get("baseline_id") or "",
         baseline_hash=materialized_graph.get("baseline_content_hash") or "",
         nodes=_execution_node_text(materialized_graph),
+        triggers=_execution_trigger_text(materialized_graph),
         stops=stop_text,
         routes=route_table,
     )
 
 
 def generate_execution_prompt(source_id=None, task_id=None, scope="general",
-                              strategy_script_group_id=None):
+                              strategy_script_group_id=None, **kwargs):
     context = _approved_graph_compile_context(source_id, task_id, scope, strategy_script_group_id)
     if "error" in context:
         return context
@@ -4554,7 +4847,45 @@ def generate_execution_prompt(source_id=None, task_id=None, scope="general",
     materialized_graph = context["materialized_graph"]
     route_table = build_authoritative_route_table(materialized_graph)
     route_hash = hashlib.sha256(route_table.encode("utf-8")).hexdigest()
-    prompt = _execution_prompt_from_graph(materialized_graph, route_table)
+    authoritative_appendix = _execution_prompt_from_graph(materialized_graph, route_table)
+
+    if not llm_client:
+        return {"error": "llm_client_not_available"}
+
+    import json as _json
+    system_prompt = """你是电话执行系统提示词的编译助手。你的任务不是概括或重写知识，而是为下方完整专家 Graph 生成一段清晰的“执行说明层”，帮助电话大模型理解自己是谁、如何自然对话、如何使用节点策略与专家原话、如何结合上下文判断路由，以及何时澄清或停止。
+
+要求：
+1. 以忠实克隆该专家的策略目的、判断方式和表达风格为第一目标。
+2. 节点原话是模仿范例，不要求逐字背诵；允许适应上下文自然表达，但不得改变节点策略目的。
+3. 路由条件是语义线索而非关键词白名单；未知信息不得解释成否定。
+4. 不得发明 Graph 中不存在的节点、路线、规则、事实、职位或候选人信息。
+5. 不要重新枚举完整节点、边或原话，也不要声称删减、合并或纠正它们；系统会在你的说明后追加不可改写的权威执行附录。
+6. 只输出可以直接放进电话模型 system prompt 的执行说明，不要输出分析过程、Markdown 代码块或额外解释。"""
+    user_prompt = "已批准并物化的完整专家 Graph：\n" + _json.dumps(
+        materialized_graph, ensure_ascii=False, sort_keys=True
+    )
+    result = llm_client.chat([
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ], max_tokens=kwargs.get("max_tokens", 65536))
+    if "error" in result:
+        return {"error": "llm_call_failed", "detail": result}
+    wrapper = str(result.get("content") or "").strip()
+    if not wrapper:
+        return {"error": "llm_call_failed", "detail": {"error": "empty_content"}}
+
+    prompt = """# 电话执行 Prompt｜专家克隆策略
+
+## LLM 编译的执行说明
+{wrapper}
+
+## 权威性边界
+- 下方权威执行附录来自已批准 Graph 的确定性序列化，是节点、话术、Trigger、停止条件与路由的唯一事实来源。
+- 执行说明若与权威附录冲突，以权威附录为准；不得跳过、改写或补造附录内容。
+
+{appendix}
+""".format(wrapper=wrapper, appendix=authoritative_appendix)
     return {
         "prompt_type": "execution",
         "prompt_content": prompt,
@@ -4563,9 +4894,9 @@ def generate_execution_prompt(source_id=None, task_id=None, scope="general",
         "route_table": route_table,
         "route_table_sha256": route_hash,
         "materialized_graph": materialized_graph,
-        "llm_model": "deterministic",
-        "llm_usage": {},
-        "llm_config_snapshot": llm_client.get_config_snapshot() if llm_client else {},
+        "llm_model": result.get("model", ""),
+        "llm_usage": result.get("usage", {}),
+        "llm_config_snapshot": llm_client.get_config_snapshot(),
     }
 
 
@@ -4689,7 +5020,7 @@ def llm_generate_script_prompt(source_id=None, task_id=None, scope="general",
 
 
 # ── E-04: Prompt/manifest 可复现编译 ────────────────
-COMPILER_VERSION = "v0.2-route"
+COMPILER_VERSION = "v0.3-execution-wrapper"
 
 def compile_release(source_id=None, task_id=None, scope="general",
                      prompt_size_budget=262144, strategy_script_group_id=None, **kwargs):
@@ -4701,7 +5032,9 @@ def compile_release(source_id=None, task_id=None, scope="general",
     if "error" in strat:
         return strat
 
-    execution = generate_execution_prompt(source_id, task_id, scope, strategy_script_group_id)
+    execution = generate_execution_prompt(
+        source_id, task_id, scope, strategy_script_group_id, **kwargs
+    )
     if "error" in execution:
         return execution
     if execution.get("route_table_sha256") != strat.get("route_table_sha256"):
@@ -4780,9 +5113,12 @@ def compile_release(source_id=None, task_id=None, scope="general",
         "prompt_size": prompt_size,
         "prompt_size_budget": prompt_size_budget,
         "llm_config_snapshot": strat.get("llm_config_snapshot", {}),
+        "llm_config_snapshot_execution": execution.get("llm_config_snapshot", {}),
+        "llm_usage_execution": execution.get("llm_usage", {}),
         "llm_usage_strategy": strat.get("llm_usage", {}),
         "llm_usage_script": script.get("llm_usage", {}),
-        "execution_compiler": "deterministic-route-v1",
+        "execution_llm_model": execution.get("llm_model", ""),
+        "execution_compiler": "llm-wrapper+deterministic-appendix-v1",
     }
     
     # manifest 自身哈希（排除 manifest_sha256 字段）
@@ -5375,6 +5711,7 @@ class Handler(BaseHTTPRequestHandler):
                 body.get("task_id", ""), body.get("graph_id", ""),
                 body.get("materialized_graph_hash", ""), body.get("node_updates", []),
                 body.get("edge_updates", []), body.get("editor", "admin"),
+                body.get("position_updates", []), body.get("reset_positions", False),
             )
             return self._json(_result_status(result), result)
 
@@ -5476,6 +5813,14 @@ class Handler(BaseHTTPRequestHandler):
                 code = 404 if result["error"] in ("task_not_found", "source_not_found") else 409
                 return self._json(code, result)
             return self._json(201, result)
+
+        if path == "/api/tasks/delete":
+            result = delete_task(
+                body.get("task_id", ""), body.get("confirm_task_id", ""), body.get("actor", "admin")
+            )
+            if "error" in result:
+                return self._json(404 if result["error"] == "task_not_found" else 409, result)
+            return self._json(200, result)
 
         if path == "/api/parse":
             source_id = body.get("source_id", "")
