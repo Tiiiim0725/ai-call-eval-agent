@@ -1,0 +1,24 @@
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+
+# Python/editor caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime logs
+runtime*.log
+
+# Company-sensitive runtime and interview data
+backend/data/db.json
+input-docs/*
+!input-docs/.gitkeep
+runs/*
+!runs/.gitkeep
+reference/

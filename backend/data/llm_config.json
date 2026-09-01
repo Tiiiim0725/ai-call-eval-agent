@@ -1,0 +1,12 @@
+{
+  "base_url": "https://token-hub.in.taou.com",
+  "model": "gpt-5.6",
+  "temperature": 0.7,
+  "max_tokens": 65536,
+  "max_utterances_per_call": 10,
+  "timeout": 900,
+  "thinking": {
+    "type": "enabled"
+  },
+  "updated_at": "2026-08-28T18:15:52"
+}

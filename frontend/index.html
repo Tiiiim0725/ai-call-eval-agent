@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 电话评价 Agent | 证据与策略工作台</title>
+  <link rel="stylesheet" href="styles.css?v=0.39.2">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">A</span><div><strong>评价策略台</strong><small>MVP 0.4</small></div></div>
+      <nav aria-label="主导航">
+        <p class="nav-label">工作流</p>
+        <button class="nav-item is-active" data-view="workspace"><span>01</span>工作台</button>
+        <button class="nav-item" data-view="tasks"><span>02</span>任务与专家</button>
+        <button class="nav-item" data-view="knowledge"><span>03</span>Graph 审查</button>
+        <button class="nav-item" data-view="release"><span>04</span>Prompt 与发布</button>
+        <p class="nav-label nav-label-lower">治理</p>
+        <button class="nav-item" data-view="audit"><span>05</span>审计与设置</button>
+      </nav>
+      <div class="sidebar-foot">独立知识编译平台<br>不运行真实电话评价</div>
+    </aside>
+    <main class="main-area">
+      <header class="topbar">
+        <div><p class="eyebrow">EVIDENCE-TO-PROMPT WORKBENCH</p><h1 id="page-title">工作台</h1><p id="page-subtitle">访谈证据、策略 Graph 与评价 Prompt 的受控编译链</p></div>
+        <div class="connection" id="connection-status"><span class="status-dot status-amber"></span><span>正在连接后端</span></div>
+      </header>
+      <section class="context-bar" id="context-bar" aria-label="当前任务上下文">
+        <label><span>当前任务</span><select id="task-switcher"><option>加载中...</option></select></label>
+        <div><span>目标专家</span><strong id="context-expert">未确认</strong></div>
+        <div><span>当前 Gate</span><strong id="context-gate">G0</strong></div>
+        <div><span>LLM</span><strong id="context-model">--</strong></div>
+      </section>
+      <div id="notice" class="notice" hidden></div>
+      <section id="app-view" class="app-view" aria-live="polite"></section>
+    </main>
+  </div>
+  <!-- Graph audit canvas: Cytoscape renders; cytoscape-elk supplies layered layout. -->
+  <script src="https://unpkg.com/cytoscape@3.31.2/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/elkjs@0.10.2/lib/elk.bundled.js"></script>
+  <script src="https://unpkg.com/cytoscape-elk@2.2.2/cytoscape-elk.js"></script>
+  <script src="app.js?v=0.46.1"></script>
+</body>
+</html>
